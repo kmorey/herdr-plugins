@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { deflateSync } from "node:zlib";
 
+import { moveIndex, proofPaths } from "../src/gallery.mjs";
 import { decodePng } from "../src/png.mjs";
 import { imagePlacement, openPaneGraphics } from "../src/herdr-graphics.mjs";
 import { loadProof } from "../src/proof.mjs";
@@ -115,6 +116,26 @@ test("streams the original PNG through the Herdr pane graphics protocol", async 
 
 test("truncates long paths through the middle", () => {
   assert.equal(truncateMiddle("/a/very/long/path/proof.png", 15), "/a/very…oof.png");
+});
+
+test("accepts a JSON gallery while preserving single-path compatibility", () => {
+  assert.deepEqual(
+    proofPaths({ pathsJson: '["/tmp/one.png","/tmp/two.png"]' }),
+    ["/tmp/one.png", "/tmp/two.png"],
+  );
+  assert.deepEqual(proofPaths({ singlePath: "/tmp/one.png" }), ["/tmp/one.png"]);
+});
+
+test("rejects malformed or empty galleries", () => {
+  assert.throws(() => proofPaths({ pathsJson: "not-json" }), /JSON array/);
+  assert.throws(() => proofPaths({ pathsJson: "[]" }), /no visual proof paths/);
+  assert.throws(() => proofPaths({ pathsJson: '["/tmp/one.png",null]' }), /non-empty string/);
+});
+
+test("gallery navigation wraps in both directions", () => {
+  assert.equal(moveIndex(0, 3, 1), 1);
+  assert.equal(moveIndex(2, 3, 1), 0);
+  assert.equal(moveIndex(0, 3, -1), 2);
 });
 
 test("validates a real proof path", () => {

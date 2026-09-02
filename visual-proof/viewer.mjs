@@ -4,30 +4,44 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 
+import { moveIndex, proofPaths } from "./src/gallery.mjs";
 import { imagePlacement, openPaneGraphics } from "./src/herdr-graphics.mjs";
 import { loadProof } from "./src/proof.mjs";
 import { renderPreview, truncateMiddle } from "./src/render.mjs";
 
-const requestedPath = process.env.VISUAL_PROOF_PATH || process.argv[2];
-
 try {
-  const proof = loadProof(requestedPath);
+  const requestedPaths = proofPaths({
+    pathsJson: process.env.VISUAL_PROOF_PATHS,
+    singlePath: process.env.VISUAL_PROOF_PATH,
+    arguments: process.argv.slice(2),
+  });
+  const proofs = requestedPaths.map((proofPath, index) => {
+    try {
+      return loadProof(proofPath);
+    } catch (error) {
+      throw new Error(`proof ${index + 1}: ${error.message}`);
+    }
+  });
   if (process.argv.includes("--inspect")) {
-    process.stdout.write(`${JSON.stringify({
+    const inspected = proofs.map((proof) => ({
       path: proof.path,
       bytes: proof.bytes,
       width: proof.image.width,
       height: proof.image.height,
-    })}\n`);
+    }));
+    process.stdout.write(
+      `${JSON.stringify(inspected.length === 1 ? inspected[0] : { proofs: inspected })}\n`,
+    );
   } else {
-    await runViewer(proof);
+    await runViewer(proofs);
   }
 } catch (error) {
   process.stderr.write(`Visual proof unavailable: ${error.message}\n`);
   process.exitCode = 1;
 }
 
-async function runViewer(proof) {
+async function runViewer(proofs) {
+  let currentIndex = 0;
   let status = "";
   let statusTimer;
   let graphics;
@@ -35,6 +49,7 @@ async function runViewer(proof) {
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
   const draw = () => {
+    const proof = proofs[currentIndex];
     const columns = process.stdout.columns || 80;
     const rows = process.stdout.rows || 24;
     const name = path.basename(proof.path);
@@ -44,11 +59,13 @@ async function runViewer(proof) {
         (graphicsError ? ` · ANSI fallback (${graphicsError})` : ""),
       Math.max(1, columns - 1),
     );
+    const position = proofs.length > 1 ? `  \x1b[36m${currentIndex + 1}/${proofs.length}\x1b[0m` : "";
     const heading =
-      `\x1b[1;36mVisual proof\x1b[0m  \x1b[1m${name}\x1b[0m\n` +
+      `\x1b[1;36mVisual proof\x1b[0m${position}  \x1b[1m${name}\x1b[0m\n` +
       `\x1b[2m${metadata}\x1b[0m\n`;
+    const navigation = proofs.length > 1 ? "←/h previous · →/l next · " : "";
     const controls =
-      `\x1b[2mq/Esc close · o open externally · y copy path\x1b[0m` +
+      `\x1b[2m${navigation}q/Esc close · o open externally · y copy path\x1b[0m` +
       (status ? `  \x1b[32m${status}\x1b[0m` : "");
     const title = `\x1b[2J\x1b[H\x1b]2;Visual proof: ${name}\x07`;
     if (graphics) {
@@ -61,6 +78,7 @@ async function runViewer(proof) {
 
   const renderGraphics = () => {
     if (!graphics) return;
+    const proof = proofs[currentIndex];
     graphics.renderPng(
       proof.data,
       proof.image,
@@ -80,6 +98,14 @@ async function runViewer(proof) {
       draw();
     }, 1_800);
     draw();
+  };
+
+  const navigate = (offset) => {
+    currentIndex = moveIndex(currentIndex, proofs.length, offset);
+    status = "";
+    clearTimeout(statusTimer);
+    draw();
+    renderGraphics();
   };
 
   const cleanup = () => {
@@ -115,12 +141,18 @@ async function runViewer(proof) {
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (key) => {
     if (key === "q" || key === "\x1b" || key === "\x03") process.exit(0);
+    if (proofs.length > 1 && (key === "h" || key === "[" || key === "\x1b[D")) {
+      navigate(-1);
+    }
+    if (proofs.length > 1 && (key === "l" || key === "]" || key === "\x1b[C")) {
+      navigate(1);
+    }
     if (key === "o") {
-      openExternal(proof.path);
+      openExternal(proofs[currentIndex].path);
       setStatus("Opened externally");
     }
     if (key === "y") {
-      const encoded = Buffer.from(proof.path).toString("base64");
+      const encoded = Buffer.from(proofs[currentIndex].path).toString("base64");
       process.stdout.write(`\x1b]52;c;${encoded}\x07`);
       setStatus("Path copied");
     }

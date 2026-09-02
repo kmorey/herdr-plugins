@@ -26,12 +26,26 @@ herdr plugin pane open \
   --env "VISUAL_PROOF_PATH=/absolute/path/to/proof.png"
 ```
 
+Open several proofs as a navigable gallery by passing a JSON array in display
+order:
+
+```bash
+herdr plugin pane open \
+  --plugin kmorey.visual-proof \
+  --entrypoint viewer \
+  --placement split \
+  --target-pane "$HERDR_PANE_ID" \
+  --env 'VISUAL_PROOF_PATHS=["/absolute/path/to/first.png","/absolute/path/to/second.png"]'
+```
+
 The viewer accepts absolute PNG paths up to 10 MiB. It supports non-interlaced,
 8-bit grayscale, grayscale-alpha, RGB, indexed-color, and RGBA PNGs.
 
 ## Controls
 
 - `q` or `Esc`: close the viewer
+- `Left`, `h`, or `[`: show the previous proof
+- `Right`, `l`, or `]`: show the next proof
 - `o`: open the image in the platform's desktop viewer
 - `y`: copy the absolute path using OSC 52
 
@@ -52,7 +66,8 @@ local terminals are Ghostty, kitty, and WezTerm.
 
 ## Agent integration
 
-The visual-proof skill should retain its absolute Markdown link for clients
+The visual-proof skill should retain its absolute Markdown links for clients
 such as Fleet, then open this plugin pane only when `HERDR_ENV=1` and the plugin
-is installed. Passing the path through `--env VISUAL_PROOF_PATH=...` keeps the
+is installed. Passing paths through `--env VISUAL_PROOF_PATHS=...` keeps the
 handoff explicit and avoids scraping rendered agent output.
+`VISUAL_PROOF_PATH` remains available for a single proof.

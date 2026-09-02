@@ -15,11 +15,13 @@ export function loadProof(value) {
     throw new Error("the proof must contain between 1 byte and 10 MiB");
   }
   if (path.extname(resolved).toLowerCase() !== ".png") {
-    throw new Error("version 0.1 supports PNG proof files only");
+    throw new Error("the viewer supports PNG proof files only");
   }
+  const data = readFileSync(resolved);
   return {
     path: resolved,
     bytes: stat.size,
-    image: decodePng(readFileSync(resolved)),
+    data,
+    image: decodePng(data),
   };
 }

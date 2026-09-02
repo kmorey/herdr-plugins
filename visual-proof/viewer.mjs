@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 
+import { imagePlacement, openPaneGraphics } from "./src/herdr-graphics.mjs";
 import { loadProof } from "./src/proof.mjs";
 import { renderPreview, truncateMiddle } from "./src/render.mjs";
 
@@ -19,16 +20,18 @@ try {
       height: proof.image.height,
     })}\n`);
   } else {
-    runViewer(proof);
+    await runViewer(proof);
   }
 } catch (error) {
   process.stderr.write(`Visual proof unavailable: ${error.message}\n`);
   process.exitCode = 1;
 }
 
-function runViewer(proof) {
+async function runViewer(proof) {
   let status = "";
   let statusTimer;
+  let graphics;
+  let graphicsError = "";
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
   const draw = () => {
@@ -36,14 +39,36 @@ function runViewer(proof) {
     const rows = process.stdout.rows || 24;
     const name = path.basename(proof.path);
     const detail = `${proof.image.width}×${proof.image.height} · ${formatBytes(proof.bytes)}`;
-    const displayPath = truncateMiddle(proof.path, Math.max(10, columns - 2));
-    const preview = renderPreview(proof.image, columns, rows);
-    process.stdout.write(
-      `\x1b[2J\x1b[H\x1b]2;Visual proof: ${name}\x07` +
-        `\x1b[1;36mVisual proof\x1b[0m  \x1b[1m${name}\x1b[0m\n` +
-        `\x1b[2m${detail} · ${displayPath}\x1b[0m\n\n${preview}\n\n` +
-        `\x1b[2mq/Esc close · o open externally · y copy path\x1b[0m` +
-        (status ? `  \x1b[32m${status}\x1b[0m` : ""),
+    const metadata = truncateMiddle(
+      `${detail} · ${proof.path}` +
+        (graphicsError ? ` · ANSI fallback (${graphicsError})` : ""),
+      Math.max(1, columns - 1),
+    );
+    const heading =
+      `\x1b[1;36mVisual proof\x1b[0m  \x1b[1m${name}\x1b[0m\n` +
+      `\x1b[2m${metadata}\x1b[0m\n`;
+    const controls =
+      `\x1b[2mq/Esc close · o open externally · y copy path\x1b[0m` +
+      (status ? `  \x1b[32m${status}\x1b[0m` : "");
+    const title = `\x1b[2J\x1b[H\x1b]2;Visual proof: ${name}\x07`;
+    if (graphics) {
+      process.stdout.write(`${title}${heading}\x1b[${rows};1H${controls}`);
+    } else {
+      const preview = renderPreview(proof.image, columns, rows);
+      process.stdout.write(`${title}${heading}\n${preview}\n\n${controls}`);
+    }
+  };
+
+  const renderGraphics = () => {
+    if (!graphics) return;
+    graphics.renderPng(
+      proof.data,
+      proof.image,
+      imagePlacement(
+        proof.image,
+        { columns: process.stdout.columns || 80, rows: process.stdout.rows || 24 },
+        graphics.cell,
+      ),
     );
   };
 
@@ -59,13 +84,28 @@ function runViewer(proof) {
 
   const cleanup = () => {
     clearTimeout(statusTimer);
+    graphics?.close();
     process.stdout.write("\x1b[?25h\x1b[0m");
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
   };
 
+  try {
+    graphics = await openPaneGraphics({
+      socketPath: process.env.HERDR_SOCKET_PATH,
+      paneId: process.env.HERDR_PANE_ID,
+    });
+  } catch (error) {
+    graphics = undefined;
+    graphicsError = error instanceof Error ? error.message : String(error);
+  }
+
   process.stdout.write("\x1b[?25l");
   draw();
-  process.stdout.on("resize", draw);
+  renderGraphics();
+  process.stdout.on("resize", () => {
+    draw();
+    renderGraphics();
+  });
   process.once("exit", cleanup);
   process.once("SIGTERM", () => process.exit(0));
 

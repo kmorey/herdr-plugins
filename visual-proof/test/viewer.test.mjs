@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { deflateSync } from "node:zlib";
 
 import { decodePng } from "../src/png.mjs";
+import { imagePlacement, openPaneGraphics } from "../src/herdr-graphics.mjs";
 import { loadProof } from "../src/proof.mjs";
 import { renderPreview, targetSize, truncateMiddle } from "../src/render.mjs";
 
@@ -37,6 +39,80 @@ test("fits the preview within terminal columns and pixel rows", () => {
   assert.deepEqual(targetSize(10, 10, 100, 100), { width: 10, height: 10 });
 });
 
+test("fits native graphics to the pane using terminal cell dimensions", () => {
+  assert.deepEqual(
+    imagePlacement(
+      { width: 864, height: 934 },
+      { columns: 105, rows: 56 },
+      { width: 9, height: 18 },
+    ),
+    { viewport_col: 5, viewport_row: 3, grid_cols: 94, grid_rows: 51 },
+  );
+});
+
+test("streams the original PNG through the Herdr pane graphics protocol", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "herdr-graphics-test-"));
+  const socketPath = path.join(directory, "herdr.sock");
+  const png = Buffer.from("png bytes");
+  let connection = 0;
+  let receivedFrame;
+  const frameReceived = new Promise((resolve) => {
+    receivedFrame = resolve;
+  });
+  const server = net.createServer((socket) => {
+    connection += 1;
+    let buffer = Buffer.alloc(0);
+    socket.on("data", (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      const newline = buffer.indexOf(10);
+      if (newline === -1) return;
+      const message = JSON.parse(buffer.subarray(0, newline).toString("utf8"));
+      if (connection === 1) {
+        assert.equal(message.method, "pane.graphics.info");
+        socket.write(`${JSON.stringify({ id: message.id, result: {
+          type: "pane_graphics_info",
+          cell_width_px: 9,
+          cell_height_px: 18,
+          pane_visible: true,
+        } })}\n`);
+        return;
+      }
+      if (message.method === "pane.graphics.stream") {
+        assert.equal(message.params.pane_id, "w1:p2");
+        socket.write(`${JSON.stringify({ id: message.id, result: { type: "ok" } })}\n`);
+        buffer = buffer.subarray(newline + 1);
+        return;
+      }
+      const dataStart = newline + 1;
+      if (buffer.length - dataStart < message.data_length) return;
+      receivedFrame({ header: message, data: buffer.subarray(dataStart) });
+    });
+  });
+
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(socketPath, resolve);
+    });
+    const graphics = await openPaneGraphics({ socketPath, paneId: "w1:p2" });
+    assert.deepEqual(graphics.cell, { width: 9, height: 18 });
+    graphics.renderPng(png, { width: 2, height: 1 }, {
+      viewport_col: 1,
+      viewport_row: 3,
+      grid_cols: 2,
+      grid_rows: 1,
+    });
+    const frame = await frameReceived;
+    assert.equal(frame.header.format, "png");
+    assert.equal(frame.header.image_width, 2);
+    assert.deepEqual(frame.data, png);
+    graphics.close();
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("truncates long paths through the middle", () => {
   assert.equal(truncateMiddle("/a/very/long/path/proof.png", 15), "/a/very…oof.png");
 });
@@ -51,6 +127,7 @@ test("validates a real proof path", () => {
   assert.equal(proof.path, proofPath);
   assert.equal(proof.image.width, 2);
   assert.equal(proof.image.height, 1);
+  assert.equal(proof.data.length, proof.bytes);
   assert.deepEqual([...proof.image.rgba], [255, 128, 0, 255, 20, 30, 40, 255]);
 });
 

@@ -1,6 +1,6 @@
 id = "kmorey.visual-proof"
 name = "Visual Proof"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.8.2"
 description = "Preview agent-generated PNG visual proof in a Herdr pane"
 platforms = ["linux", "macos", "windows"]

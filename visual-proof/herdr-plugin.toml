@@ -1,0 +1,12 @@
+id = "kmorey.visual-proof"
+name = "Visual Proof"
+version = "0.1.0"
+min_herdr_version = "0.8.2"
+description = "Preview agent-generated PNG visual proof in a Herdr pane"
+platforms = ["linux", "macos", "windows"]
+
+[[panes]]
+id = "viewer"
+title = "Visual proof"
+placement = "split"
+command = ["node", "viewer.mjs"]

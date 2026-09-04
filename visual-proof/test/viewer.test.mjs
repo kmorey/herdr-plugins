@@ -4,8 +4,11 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { deflateSync } from "node:zlib";
 
+import { openCurrentProof } from "../open-current.mjs";
+import { currentProofPaths } from "../src/current-proof.mjs";
 import { moveIndex, proofPaths } from "../src/gallery.mjs";
 import { decodePng } from "../src/png.mjs";
 import { imagePlacement, openPaneGraphics } from "../src/herdr-graphics.mjs";
@@ -136,6 +139,110 @@ test("gallery navigation wraps in both directions", () => {
   assert.equal(moveIndex(0, 3, 1), 1);
   assert.equal(moveIndex(2, 3, 1), 0);
   assert.equal(moveIndex(0, 3, -1), 2);
+});
+
+test("finds the latest visual proof gallery in pane output", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "herdr-current-proof-test-"));
+  const olderPath = path.join(directory, "older.png");
+  const firstPath = path.join(directory, "proof one.png");
+  const secondPath = path.join(directory, "proof-two.png");
+  writeFileSync(olderPath, "older");
+  writeFileSync(firstPath, "first");
+  writeFileSync(secondPath, "second");
+
+  try {
+    const output = [
+      "Visual Proof",
+      olderPath,
+      "Summary",
+      "Visual Proof",
+      `\x1b]8;;${pathToFileURL(firstPath).href}\x07First\x1b]8;;\x07`,
+      `[Second](${secondPath})`,
+    ].join("\n");
+    assert.deepEqual(currentProofPaths(output), [firstPath, secondPath]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("falls back to the most recent PNG when there is no proof heading", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "herdr-current-proof-test-"));
+  const firstPath = path.join(directory, "first.png");
+  const secondPath = path.join(directory, "second.png");
+  writeFileSync(firstPath, "first");
+  writeFileSync(secondPath, "second");
+
+  try {
+    assert.deepEqual(currentProofPaths(`${firstPath}\n${secondPath}`), [secondPath]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("opens the current proof beside the action pane", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "herdr-current-proof-test-"));
+  const proofPath = path.join(directory, "proof.png");
+  writeFileSync(proofPath, "proof");
+  const calls = [];
+  const spawn = (command, args, options) => {
+    calls.push({ command, args, options });
+    if (args[0] === "pane" && args[1] === "read") {
+      return { status: 0, stdout: `Visual Proof\n${proofPath}\n`, stderr: "" };
+    }
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  try {
+    assert.equal(openCurrentProof({
+      environment: {
+        HERDR_BIN_PATH: "/test/herdr",
+        HERDR_PANE_ID: "w1:p2",
+        HERDR_PLUGIN_ID: "kmorey.visual-proof",
+      },
+      spawn,
+    }), 0);
+    assert.deepEqual(calls[0].args, [
+      "pane", "read", "w1:p2", "--source", "recent-unwrapped",
+      "--lines", "500", "--format", "ansi",
+    ]);
+    assert.deepEqual(calls[1].args, [
+      "plugin", "pane", "open",
+      "--plugin", "kmorey.visual-proof",
+      "--entrypoint", "viewer",
+      "--placement", "split",
+      "--target-pane", "w1:p2",
+      "--direction", "right",
+      "--env", `VISUAL_PROOF_PATHS=[${JSON.stringify(proofPath)}]`,
+      "--focus",
+    ]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("notifies instead of opening a viewer when no current proof exists", () => {
+  const calls = [];
+  let errorOutput = "";
+  const spawn = (command, args, options) => {
+    calls.push({ command, args, options });
+    return { status: 0, stdout: "No proof here\n", stderr: "" };
+  };
+
+  assert.equal(openCurrentProof({
+    environment: {
+      HERDR_BIN_PATH: "/test/herdr",
+      HERDR_PANE_ID: "w1:p2",
+      HERDR_PLUGIN_ID: "kmorey.visual-proof",
+    },
+    spawn,
+    stderr: { write: (value) => { errorOutput += value; } },
+  }), 1);
+  assert.deepEqual(calls[1].args, [
+    "notification", "show", "Visual proof unavailable",
+    "--body", "No current PNG visual proof was found in the focused pane.",
+    "--sound", "none",
+  ]);
+  assert.match(errorOutput, /No current PNG visual proof/);
 });
 
 test("validates a real proof path", () => {

@@ -38,6 +38,27 @@ herdr plugin pane open \
   --env 'VISUAL_PROOF_PATHS=["/absolute/path/to/first.png","/absolute/path/to/second.png"]'
 ```
 
+Open the latest proof linked from the focused pane:
+
+```bash
+herdr plugin action invoke kmorey.visual-proof.open-current
+```
+
+The action reads the last 500 rows of the focused pane, prefers PNG links after
+the latest `Visual Proof` heading, and opens up to 24 proofs as a gallery. If
+there is no heading, it opens the most recent valid PNG path. Missing or stale
+paths produce a Herdr notification instead of opening an empty viewer.
+
+Bind the action in `~/.config/herdr/config.toml`:
+
+```toml
+[[keys.command]]
+key = "prefix+v"
+type = "plugin_action"
+command = "kmorey.visual-proof.open-current"
+description = "Open current visual proof"
+```
+
 The viewer accepts absolute PNG paths up to 10 MiB. It supports non-interlaced,
 8-bit grayscale, grayscale-alpha, RGB, indexed-color, and RGBA PNGs.
 
@@ -68,6 +89,7 @@ local terminals are Ghostty, kitty, and WezTerm.
 
 The visual-proof skill should retain its absolute Markdown links for clients
 such as Fleet, then open this plugin pane only when `HERDR_ENV=1` and the plugin
-is installed. Passing paths through `--env VISUAL_PROOF_PATHS=...` keeps the
-handoff explicit and avoids scraping rendered agent output.
+is installed. Passing paths through `--env VISUAL_PROOF_PATHS=...` remains the
+most reliable handoff because the paths are explicit. The `open-current` action
+is a user-invoked convenience for reopening proofs from retained pane output.
 `VISUAL_PROOF_PATH` remains available for a single proof.

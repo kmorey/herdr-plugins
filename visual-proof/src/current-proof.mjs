@@ -29,7 +29,11 @@ export function currentProofPaths(ansi) {
   }
 
   candidates.sort((left, right) => left.index - right.index);
-  const headings = [...text.matchAll(/^\s*(?:#{1,6}\s*)?Visual Proof\s*$/gim)];
+  const headings = [
+    ...text.matchAll(
+      /^\s*(?:#{1,6}\s*)?(?:[*_]{1,3})?Visual Proof(?:s|\s+(?:Files?|Gallery|Images?))?\s*:?\s*(?:[*_]{1,3})?\s*$/gim,
+    ),
+  ];
   let selected = [];
 
   for (let index = headings.length - 1; index >= 0; index -= 1) {

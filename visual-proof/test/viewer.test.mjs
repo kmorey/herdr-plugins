@@ -165,6 +165,31 @@ test("finds the latest visual proof gallery in pane output", () => {
   }
 });
 
+test("finds galleries under common visual proof heading variants", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "herdr-current-proof-test-"));
+  const firstPath = path.join(directory, "first.png");
+  const secondPath = path.join(directory, "second.png");
+  writeFileSync(firstPath, "first");
+  writeFileSync(secondPath, "second");
+
+  try {
+    for (const heading of [
+      "Visual Proof:",
+      "### Visual Proof:",
+      "Visual proof files",
+      "**Visual proofs:**",
+    ]) {
+      assert.deepEqual(
+        currentProofPaths(`${heading}\n${firstPath}\n${secondPath}`),
+        [firstPath, secondPath],
+        heading,
+      );
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("falls back to the most recent PNG when there is no proof heading", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "herdr-current-proof-test-"));
   const firstPath = path.join(directory, "first.png");

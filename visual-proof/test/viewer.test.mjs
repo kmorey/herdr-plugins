@@ -178,6 +178,7 @@ test("finds galleries under common visual proof heading variants", () => {
       "### Visual Proof:",
       "Visual proof files",
       "**Visual proofs:**",
+      "Visual proof — desktop and mobile",
     ]) {
       assert.deepEqual(
         currentProofPaths(`${heading}\n${firstPath}\n${secondPath}`),

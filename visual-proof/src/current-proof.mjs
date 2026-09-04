@@ -29,11 +29,9 @@ export function currentProofPaths(ansi) {
   }
 
   candidates.sort((left, right) => left.index - right.index);
-  const headings = [
-    ...text.matchAll(
-      /^\s*(?:#{1,6}\s*)?(?:[*_]{1,3})?Visual Proof(?:s|\s+(?:Files?|Gallery|Images?))?\s*:?\s*(?:[*_]{1,3})?\s*$/gim,
-    ),
-  ];
+  const headings = [...text.matchAll(/^.*$/gm)].filter((match) =>
+    isVisualProofHeading(match[0]),
+  );
   let selected = [];
 
   for (let index = headings.length - 1; index >= 0; index -= 1) {
@@ -51,6 +49,16 @@ export function currentProofPaths(ansi) {
   }
 
   return [...new Set(selected.map(({ path }) => path))].slice(0, 24);
+}
+
+function isVisualProofHeading(line) {
+  const heading = line
+    .trim()
+    .replace(/^#{1,6}\s*/, "")
+    .trim()
+    .replace(/^([*_]{1,3})(.*?)\1$/, "$2")
+    .trim();
+  return /^Visual Proofs?\b/i.test(heading);
 }
 
 function expandFileLinks(value) {

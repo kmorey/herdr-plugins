@@ -191,6 +191,30 @@ test("finds galleries under common visual proof heading variants", () => {
   }
 });
 
+test("finds every PNG in a bulleted fresh proof summary", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "herdr-current-proof-test-"));
+  const proofPaths = [
+    "desktop-relationships.png",
+    "tablet-relationships.png",
+    "mobile-relationships.png",
+    "desktop-facts.png",
+  ].map((name) => path.join(directory, name));
+  for (const proofPath of proofPaths) writeFileSync(proofPath, proofPath);
+
+  try {
+    const output = [
+      "• Fresh proof:",
+      `Desktop – 1440px (${proofPaths[0]}) ·`,
+      `Tablet – 1024px (${proofPaths[1]}) ·`,
+      `Mobile – 412px (${proofPaths[2]}) ·`,
+      `Facts panel (${proofPaths[3]})`,
+    ].join(" ");
+    assert.deepEqual(currentProofPaths(output), proofPaths);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("falls back to the most recent PNG when there is no proof heading", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "herdr-current-proof-test-"));
   const firstPath = path.join(directory, "first.png");

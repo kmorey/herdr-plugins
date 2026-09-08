@@ -9,6 +9,10 @@ Files are read on the host running the plugin, including when Herdr is remote.
 Node.js 20+ and npm are required. Herdr installs the locked Markdown and
 Unicode-wrapping dependencies through the plugin's build step.
 
+```sh
+herdr plugin install kmorey/herdr-plugins/file-preview --ref v0.5.0 --yes
+```
+
 For a local checkout, from the repository root:
 
 ```sh
@@ -107,6 +111,26 @@ native image layer; returning to PNG renders it again.
 
 ## Migration from Visual Proof
 
+The existing user-invoked `open-current` action is retained for reopening the
+latest PNG proof gallery from the focused pane's last 500 rows. It recognizes
+Visual Proof, Fresh Proof, and Current Proof headings, and otherwise selects the
+most recent valid PNG path. Stale or missing paths produce a notification.
+Explicit file-path inputs remain the reliable handoff for all supported formats.
+
+```sh
+herdr plugin action invoke kmorey.file-preview.open-current
+```
+
+Update an existing shortcut in `~/.config/herdr/config.toml` to the new action:
+
+```toml
+[[keys.command]]
+key = "prefix+v"
+type = "plugin_action"
+command = "kmorey.file-preview.open-current"
+description = "Open current visual proof"
+```
+
 Relink/reinstall as `kmorey.file-preview` and update callers to use that plugin
 ID. The old `kmorey.visual-proof` ID is not an alias. Existing installations can
 remain while callers migrate; the visual-proof skill still collects and
@@ -125,8 +149,9 @@ through to a lower-priority input. Compatibility variables remain supported
 during migration.
 
 Agents should explicitly pass output paths and keep ordinary absolute Markdown
-links in their responses for other clients. Herdr conversation-link activation,
-directory browsing, and persistent artifact registration are separate work.
+links in their responses for other clients. The retained PNG-only action is a
+manual convenience; general Herdr conversation-link activation, directory
+browsing, and persistent artifact registration are separate work.
 
 ## Inspection and tests
 

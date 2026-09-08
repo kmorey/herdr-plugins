@@ -151,6 +151,7 @@ test("native image graphics are cleared before text and restored when returning 
   const socketPath = path.join(directory, "herdr.sock");
   const events = [];
   const sockets = new Set();
+  let activeStream = false;
   const server = net.createServer((socket) => {
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
@@ -174,6 +175,14 @@ test("native image graphics are cleared before text and restored when returning 
         if (request.format) { frame = request; continue; }
         events.push(request.method);
         assert.equal(request.params.pane_id, "test:p1");
+        if (request.method === "pane.graphics.stream") {
+          activeStream = true;
+          socket.once("end", () => { activeStream = false; });
+        }
+        if (request.method === "pane.graphics.clear" && activeStream) {
+          socket.write(`${JSON.stringify({ id: request.id, error: { code: "stream_conflict", message: "pane graphics layer has an active stream" } })}\n`);
+          continue;
+        }
         const result = request.method === "pane.graphics.info" ? { cell_width_px: 9, cell_height_px: 18 } : { type: "ok" };
         socket.write(`${JSON.stringify({ id: request.id, result })}\n`);
       }

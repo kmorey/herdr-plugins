@@ -110,7 +110,7 @@ export async function runViewer(paths) {
     const searchStatus = editing ? `/${draft}  (Enter search · Esc cancel)` : query ? `${matches.length ? `Match ${matchIndex + 1}/${matches.length}` : "No matches"} · /${query}` : "";
     process.stdout.write(`\x1b[2J\x1b[H\x1b]2;File preview: ${name}\x07${heading}\n\x1b[2m${clip(metadata)}\x1b[0m\n\n${body}\x1b[${height - 1};1H\x1b[2m${clip(status || searchStatus || progress)}\x1b[0m\x1b[${height};1H${clip(footer)}`);
     if (artifact.image && graphics) {
-      graphics.renderPng(artifact.data, artifact.image, imagePlacement(artifact.image, size(), graphics.cell));
+      await graphics.renderPng(artifact.data, artifact.image, imagePlacement(artifact.image, size(), graphics.cell));
       imageShown = true;
     }
   }
@@ -122,6 +122,9 @@ export async function runViewer(paths) {
     closed = true;
     try {
       if (imageShown) await graphics.clear();
+    } catch (error) {
+      process.stderr.write(`Could not clear native image: ${safeText(error.message)}\n`);
+      process.exitCode = 1;
     } finally {
       graphics?.close();
       process.stdout.off("resize", resize);

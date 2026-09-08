@@ -32,13 +32,14 @@ export async function openPaneGraphics({ socketPath, paneId }) {
   if (!socketPath || !paneId) throw new Error("Herdr graphics context is missing");
 
   const info = await request(socketPath, "pane.graphics.info", { pane_id: paneId });
-  const stream = await openStream(socketPath, paneId);
+  let stream = await openStream(socketPath, paneId);
   return {
     cell: {
       width: info.cell_width_px,
       height: info.cell_height_px,
     },
-    renderPng(data, image, placement) {
+    async renderPng(data, image, placement) {
+      if (!stream || stream.destroyed) stream = await openStream(socketPath, paneId);
       const header = {
         format: "png",
         image_width: image.width,
@@ -50,12 +51,30 @@ export async function openPaneGraphics({ socketPath, paneId }) {
       stream.write(data);
     },
     close() {
-      stream.end();
+      stream?.end();
     },
-    clear() {
+    async clear() {
+      const active = stream;
+      stream = undefined;
+      // Herdr rejects clearing a layer until its streaming connection has ended.
+      if (active && !active.closed) await endStream(active);
       return request(socketPath, "pane.graphics.clear", { pane_id: paneId, layer_id: "primary" });
     },
   };
+}
+
+function endStream(stream) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      stream.destroy();
+      reject(new Error("Herdr graphics stream did not close"));
+    }, REQUEST_TIMEOUT_MS);
+    stream.once("close", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    stream.end();
+  });
 }
 
 function request(socketPath, method, params) {

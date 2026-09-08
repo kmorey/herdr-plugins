@@ -97,7 +97,7 @@ test("streams the original PNG through the Herdr pane graphics protocol", { skip
     });
     const graphics = await openPaneGraphics({ socketPath, paneId: "w1:p2" });
     assert.deepEqual(graphics.cell, { width: 9, height: 18 });
-    graphics.renderPng(png, { width: 2, height: 1 }, {
+    await graphics.renderPng(png, { width: 2, height: 1 }, {
       viewport_col: 1,
       viewport_row: 3,
       grid_cols: 2,

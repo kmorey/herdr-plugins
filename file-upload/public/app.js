@@ -1,10 +1,12 @@
 let token = location.hash.slice(1);
+const fallback = new URLSearchParams(location.search).has('fallback');
+document.querySelector('#handoff').hidden = !fallback;
 try {
   if (token) sessionStorage.setItem('herdr-upload-key', token);
   else token = sessionStorage.getItem('herdr-upload-key') || '';
 } catch { /* A fresh link also works when browser storage is disabled. */ }
 // Keep the key out of the address bar, referrers and captured screenshots.
-history.replaceState(null, '', location.pathname);
+history.replaceState(null, '', location.pathname + location.search);
 const input = document.querySelector('#files');
 const zone = document.querySelector('#drop-zone');
 const status = document.querySelector('#status');

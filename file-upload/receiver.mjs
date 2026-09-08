@@ -1,6 +1,7 @@
 import { hostname } from 'node:os';
 import { paneDelivery } from './src/herdr.mjs';
 import { startReceiver } from './src/server.mjs';
+import { helperLink } from './src/handoff.mjs';
 
 try {
   const target = JSON.parse(process.env.FILE_UPLOAD_TARGET || 'null');
@@ -12,7 +13,12 @@ try {
     onActivity: (message) => console.log(message),
   });
   console.log(`\nFile Upload → ${target.paneID} on ${hostname()}\n`);
-  console.log(`Open this link in your browser:\n\n${receiver.url}\n`);
+  const helper = helperLink({ host: hostname(), paneID: target.paneID, port: receiver.port, token: receiver.token });
+  console.log('Kitty on your local computer: Ctrl+Shift+click this link, then drop files:');
+  console.log(`\n\x1b]8;;${helper}\x1b\\Open local file helper\x1b]8;;\x1b\\\n`);
+  console.log('Requires the local Kitty open-actions.conf entry from the plugin README.');
+  console.log(`Helper link (for copying):\n${helper}\n`);
+  console.log(`Browser upload fallback:\n\n${receiver.url}\n`);
   console.log('If this pane is remote, run this on your laptop first:');
   console.log(`\n  ssh -N -L ${receiver.port}:127.0.0.1:${receiver.port} <your-ssh-host>\n`);
   console.log('Replace <your-ssh-host> with the SSH alias for this machine.');

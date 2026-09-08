@@ -1,6 +1,6 @@
 id = "kmorey.file-upload"
 name = "File Upload"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.9.0"
 description = "Upload local files through a browser and insert their paths into a Herdr pane"
 platforms = ["linux", "macos"]

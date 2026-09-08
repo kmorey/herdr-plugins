@@ -1,7 +1,7 @@
 # File Preview
 
 Read agent-generated reports and screenshots beside their Herdr pane. File
-Preview supports PNG, Markdown, JSON, and UTF-8 text in an ordered mixed gallery.
+Preview supports PNG, MP4 video, Markdown, JSON, and UTF-8 text in an ordered mixed gallery.
 Files are read on the host running the plugin, including when Herdr is remote.
 
 ## Install and develop
@@ -46,6 +46,15 @@ Unreadable files produce an error identifying the failed path.
 
 ## Formats and limits
 
+- **MP4:** `.mp4`, case-insensitively, with a video stream supported by the host's
+  FFmpeg build. Requires `ffmpeg` and `ffprobe` in `PATH` on the viewer host.
+  Opens paused; playback is silent and requires native pane graphics. Without
+  native graphics, a still frame uses the terminal fallback and seeking works.
+  Video is decoded incrementally, rather than loaded into memory, with previews
+  capped at 15 fps and 1280×720. Source dimensions have the same 8,192-per-side
+  and 20-million-pixel limits as PNGs; the PNG/text file-size limits do not apply.
+  The decoder runs only for the selected video and stops on pause, help, gallery
+  navigation, or exit. Late rendered frames are skipped rather than queued.
 - **PNG:** detected by signature; `.png` files must also have a valid signature.
   Up to 10 MiB, 8,192 pixels per dimension and 20 million pixels total. Supports
   non-interlaced, 8-bit grayscale, grayscale-alpha, RGB, indexed-color, and RGBA.
@@ -61,7 +70,7 @@ Unreadable files produce an error identifying the failed path.
   limited to 1 MiB. Tabs display as four spaces, line endings are normalized,
   and terminal control sequences display as escaped text.
 
-Binary files, directories, and other image formats are unsupported. Text wraps
+Other binary files, directories, and other image formats are unsupported. Text wraps
 to the pane width, accounting for wide characters. Image previews redraw on
 resize. The text viewport remains within the current document.
 
@@ -82,6 +91,26 @@ resize. The text viewport remains within the current document.
 | `n` / `N` | Next / previous match, wrapping at the ends |
 | `y` | Copy the current absolute path through OSC 52 |
 | `o` | Request opening with the platform's application on the viewer host |
+
+### Video controls
+
+| Key | Action while viewing MP4 |
+| --- | --- |
+| `Space` | Play/pause; replay after reaching the end |
+| `Left` / `Right` | Seek backward/forward five seconds |
+| `,` / `.` | Pause and step backward/forward by one nominal frame interval |
+| `[` / `]`, `h` / `l` | Previous/next gallery file |
+
+Video positions are remembered when navigating the gallery; returning opens
+paused. Frame stepping uses `1 / average frame rate`, so variable-frame-rate
+recordings may not advance exactly one source frame. Resizing refits the video
+and restarts decoding at the current position. Audio is not played or forwarded
+to remote clients.
+
+Open an MP4 using the same command above with
+`--env 'FILE_PREVIEW_PATH=/absolute/path/to/demo.mp4'`, or include it in
+`FILE_PREVIEW_PATHS` alongside PNG and text files. For local development, link
+this checkout to use MP4 support; the pinned v0.5.0 release predates it.
 
 Search uses the active displayed representation (with Unicode NFC normalization)
 and highlights the current
@@ -112,9 +141,9 @@ native image layer; returning to PNG renders it again.
 ## Migration from Visual Proof
 
 The existing user-invoked `open-current` action is retained for reopening the
-latest PNG proof gallery from the focused pane's last 500 rows. It recognizes
+latest PNG/MP4 proof gallery from the focused pane's last 500 rows. It recognizes
 Visual Proof, Fresh Proof, and Current Proof headings, and otherwise selects the
-most recent valid PNG path. Stale or missing paths produce a notification.
+most recent existing PNG or MP4 path. Stale or missing paths produce a notification.
 Explicit file-path inputs remain the reliable handoff for all supported formats.
 
 ```sh
@@ -149,7 +178,7 @@ through to a lower-priority input. Compatibility variables remain supported
 during migration.
 
 Agents should explicitly pass output paths and keep ordinary absolute Markdown
-links in their responses for other clients. The retained PNG-only action is a
+links in their responses for other clients. The retained PNG/MP4 action is a
 manual convenience; general Herdr conversation-link activation, directory
 browsing, and persistent artifact registration are separate work.
 
@@ -162,15 +191,19 @@ npm --prefix file-preview test
 ```
 
 `--inspect` requires no TTY or Herdr connection. A single file produces an object
-with `path` (resolved absolute path), `type` (`png`, `markdown`, `json`, or
+with `path` (resolved absolute path), `type` (`png`, `video`, `markdown`, `json`, or
 `text`), and `bytes`. PNGs add `width` and `height`; text formats add `lines`
-(source line count, including a trailing empty line). Malformed JSON adds a
+(source line count, including a trailing empty line). Videos add `width`,
+`height`, `duration` (seconds), `fps` (average source rate), and `codec`, without
+decoding frames. Malformed JSON adds a
 `diagnostic` and still exits successfully. Multiple files produce
 `{"files":[...]}`; this replaces the old `{"proofs":[...]}` shape. Invalid
 inputs exit nonzero with a diagnostic on stderr.
 
 The tests use Node's built-in runner, real file fixtures, a mock Herdr socket,
 and the actual CLI in a PTY. Interactive tests require Python 3 on macOS/Linux;
-PTY and Unix-socket tests are skipped on Windows. Python is a test-only requirement. This JavaScript
+PTY and Unix-socket tests are skipped on Windows. Video tests generate real MP4
+fixtures and require FFmpeg/ffprobe; they are skipped when those tools are missing.
+Python is a test-only requirement. This JavaScript
 package has no TypeScript/typechecking setup; syntax can be checked with
 `node --check`.

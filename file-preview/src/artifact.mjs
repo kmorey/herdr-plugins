@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { decodePng } from "./png.mjs";
 import { formatJson } from "./json.mjs";
+import { probeVideo } from "./video.mjs";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -24,6 +25,9 @@ function readArtifact(value) {
   let isPng;
   try {
     if (!fstatSync(fd).isFile()) throw new Error("only regular files are supported; directory browsing is not available");
+    if (path.extname(value).toLowerCase() === ".mp4") {
+      return { path: resolved, bytes: fstatSync(fd).size, type: "video", video: probeVideo(resolved) };
+    }
     const signature = Buffer.alloc(8);
     const bytes = readSync(fd, signature, 0, 8, 0);
     isPng = signature.equals(PNG_SIGNATURE) || path.extname(value).toLowerCase() === ".png";
@@ -62,6 +66,7 @@ function readArtifact(value) {
 }
 
 export function inspectArtifact(artifact) {
-  const { path, type, bytes, image, text } = artifact;
+  const { path, type, bytes, image, text, video } = artifact;
+  if (video) return { path, type, bytes, ...video };
   return { path, type, bytes, ...(image ? { width: image.width, height: image.height } : { lines: text.split(/\r\n|\r|\n/).length }), ...(artifact.diagnostic ? { diagnostic: artifact.diagnostic } : {}) };
 }

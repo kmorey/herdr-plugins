@@ -289,10 +289,10 @@ test("notifies instead of opening a viewer when no current proof exists", () => 
   }), 1);
   assert.deepEqual(calls[1].args, [
     "notification", "show", "Visual proof unavailable",
-    "--body", "No current PNG visual proof was found in the focused pane.",
+    "--body", "No current PNG or MP4 visual proof was found in the focused pane.",
     "--sound", "none",
   ]);
-  assert.match(errorOutput, /No current PNG visual proof/);
+  assert.match(errorOutput, /No current PNG or MP4 visual proof/);
 });
 
 test("validates a real PNG artifact", () => {

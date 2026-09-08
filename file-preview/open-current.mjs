@@ -59,7 +59,7 @@ export function openCurrentProof({
 
   const proofs = currentProofPaths(read.stdout);
   if (proofs.length === 0) {
-    return fail("No current PNG visual proof was found in the focused pane.");
+    return fail("No current PNG or MP4 visual proof was found in the focused pane.");
   }
 
   const opened = spawn(

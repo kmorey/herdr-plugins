@@ -10,12 +10,12 @@ export function currentProofPaths(ansi) {
   const absolutePath = String.raw`(?:file:\/\/)?(?:\/|[A-Za-z]:[\\/])`;
   const patterns = [
     new RegExp(
-      String.raw`\]\(\s*<?(${absolutePath}[^>\r\n]*?\.png)(?::\d+)?(?:>\s*)?\)`,
+      String.raw`\]\(\s*<?(${absolutePath}[^>\r\n]*?\.(?:png|mp4))(?::\d+)?(?:>\s*)?\)`,
       "gi",
     ),
-    new RegExp(String.raw`<(${absolutePath}[^>\r\n]*?\.png)>`, "gi"),
+    new RegExp(String.raw`<(${absolutePath}[^>\r\n]*?\.(?:png|mp4))>`, "gi"),
     new RegExp(
-      String.raw`${absolutePath}(?:[^\s()[\]{}'\x22\x60<>]|\\ )+?\.png`,
+      String.raw`${absolutePath}(?:[^\s()[\]{}'\x22\x60<>]|\\ )+?\.(?:png|mp4)`,
       "gi",
     ),
   ];
@@ -23,7 +23,7 @@ export function currentProofPaths(ansi) {
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) {
       const value = match[1] || match[0];
-      const proofPath = usablePngPath(value);
+      const proofPath = usableMediaPath(value);
       if (proofPath) candidates.push({ index: match.index, path: proofPath });
     }
   }
@@ -87,7 +87,7 @@ function pathFromUri(value) {
   }
 }
 
-function usablePngPath(value) {
+function usableMediaPath(value) {
   let candidate = value.trim().replace(/^<|>$/g, "").replace(/\\ /g, " ");
 
   try {
@@ -103,15 +103,14 @@ function usablePngPath(value) {
     return undefined;
   }
 
-  const pngEnd = candidate.toLowerCase().lastIndexOf(".png");
-  if (pngEnd === -1) return undefined;
-  candidate = candidate.slice(0, pngEnd + 4);
+  const extension = /\.(png|mp4)$/i.exec(candidate)?.[1].toLowerCase();
+  if (!extension) return undefined;
 
   try {
     if (!existsSync(candidate)) return undefined;
     const resolved = realpathSync(candidate);
     const stat = statSync(resolved);
-    if (!stat.isFile() || stat.size < 1 || stat.size > 10 * 1024 * 1024) {
+    if (!stat.isFile() || stat.size < 1 || (extension === "png" && stat.size > 10 * 1024 * 1024)) {
       return undefined;
     }
     return resolved;

@@ -47,8 +47,19 @@ export async function openPaneGraphics({ socketPath, paneId }) {
         data_length: data.length,
         placement,
       };
-      stream.write(`${JSON.stringify(header)}\n`);
-      stream.write(data);
+      await new Promise((resolve, reject) => {
+        const active = stream;
+        const timer = setTimeout(() => {
+          active.destroy();
+          reject(new Error("Herdr graphics write timed out"));
+        }, REQUEST_TIMEOUT_MS);
+        active.write(`${JSON.stringify(header)}\n`);
+        active.write(data, (error) => {
+          clearTimeout(timer);
+          if (error) reject(error);
+          else resolve();
+        });
+      });
     },
     close() {
       stream?.end();

@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { automaticUpload } from '../src/automatic-upload.mjs';
 import { browserLink, helperLink, parseHandoff, receiverRequest, verifyReceiver } from '../src/handoff.mjs';
 import { localConnection, machineCandidates } from '../src/local-connection.mjs';
@@ -145,4 +148,23 @@ test('saved-machine selection is a hint; incorrect receiver identities and keys 
   await assert.rejects(() => verifyReceiver(connection, { ...handoff, paneID: 'w9:p9' }), /does not match/);
   await assert.rejects(() => verifyReceiver(connection, { ...handoff, host: 'other' }), /does not match/);
   await assert.rejects(() => verifyReceiver({ ...connection, token: 'wrong' }, handoff), /access key/);
+});
+
+test('an explicitly requested SSH route fails without selecting a different saved machine', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'herdr-upload-route-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'bin'));
+  const profiles = [{ id: 'forced', target: 'forced-host', enabled: true, label: 'Forced' },
+    { id: 'other', target: 'other-host', enabled: true, label: 'Other', selected: true }];
+  await writeFile(join(directory, 'bin', 'herdr'), `#!/bin/sh\nprintf '%s' '${JSON.stringify(profiles)}'\n`, { mode: 0o700 });
+  await writeFile(join(directory, 'bin', 'ssh'), '#!/bin/sh\necho "SSH route unavailable" >&2\nexit 255\n', { mode: 0o700 });
+  const link = helperLink({ host: 'remote-host', paneID: 'w1:p1', port: 34567, token: 'a'.repeat(64) });
+  await assert.rejects(() => promisify(execFile)(process.execPath, [fileURLToPath(new URL('../local.mjs', import.meta.url)), link, '--machine', 'forced'], {
+    env: { ...process.env, PATH: `${directory}/bin:${process.env.PATH}` }, timeout: 5000,
+  }), (error) => {
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /SSH route unavailable/);
+    assert.doesNotMatch(error.stdout, /Choose the saved machine|Machine number/);
+    return true;
+  });
 });

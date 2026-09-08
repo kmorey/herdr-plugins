@@ -20,7 +20,8 @@ async function connectSSH(handoff, target) {
 
 async function question(prompt) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try { return await rl.question(prompt); } finally { rl.close(); }
+  rl.once('SIGINT', () => void stop());
+  try { return await rl.question(prompt, { signal: shutdown.signal }); } finally { rl.close(); }
 }
 
 async function openBrowser(url) {
@@ -46,6 +47,7 @@ async function connect(handoff, machineID) {
   for (const profile of candidates) {
     console.log(`Connecting through ${profile.label} (${profile.target})…`);
     try { return await connectSSH(handoff, profile.target); } catch (error) {
+      if (machineID || shutdown.signal.aborted) throw error;
       console.log(`Connection failed: ${error.message}`);
     }
   }
@@ -131,11 +133,14 @@ try {
     }
   }
 } catch (error) {
-  console.error(`\nFile Upload: ${error.message}`);
-  console.error('If SSH cannot reach the receiver, the browser cannot reach it either.');
-  console.error('Use the browser link and manual SSH tunnel command in the Herdr upload pane.');
-  process.exitCode = 1;
-  if (process.stdin.isTTY) await question('\nPress Enter to close. ').catch(() => {});
+  await connection?.close();
+  if (!shutdown.signal.aborted) {
+    console.error(`\nFile Upload: ${error.message}`);
+    console.error('If SSH cannot reach the receiver, the browser cannot reach it either.');
+    console.error('Use the browser link and manual SSH tunnel command in the Herdr upload pane.');
+    process.exitCode = 1;
+    if (process.stdin.isTTY) await question('\nPress Enter to close. ').catch(() => {});
+  }
 } finally {
   clearTimeout(expiry);
   await connection?.close();

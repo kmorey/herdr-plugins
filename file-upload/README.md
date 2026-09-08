@@ -80,8 +80,10 @@ the browser: it owns the SSH tunnel. Press **b** at the initial drop prompt to
 use the browser directly, or **q** / Ctrl+C to cancel.
 
 The helper uses noninteractive SSH (`BatchMode=yes`) and existing keys/SSH-agent
-authentication. If SSH itself cannot connect, neither upload path can reach the
-receiver. It reports the connection failure and directs you to the original
+authentication. It disables SSH backgrounding and connection sharing for its
+owned tunnel, so closing the helper also closes that tunnel. If SSH itself cannot
+connect, neither upload path can reach the receiver. It reports the connection
+failure and directs you to the original
 browser link and manual tunnel instructions, rather than opening a broken page.
 Connection hints never choose or change the destination pane, even if you switch
 saved machines in another Herdr client.

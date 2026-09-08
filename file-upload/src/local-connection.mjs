@@ -46,6 +46,8 @@ export async function sshConnection(handoff, sshTarget, signal) {
   signal?.throwIfAborted();
   const child = spawn('ssh', [
     '-T', '-N', '-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes',
+    '-o', 'ForkAfterAuthentication=no', '-o', 'ControlMaster=no',
+    '-o', 'ControlPath=none', '-o', 'ControlPersist=no',
     '-o', 'ConnectTimeout=8', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=2',
     '-L', `127.0.0.1:${port}:127.0.0.1:${handoff.port}`, sshTarget,
   ], { stdio: ['ignore', 'ignore', 'pipe'] });

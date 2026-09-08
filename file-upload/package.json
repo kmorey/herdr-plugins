@@ -1,0 +1,13 @@
+{
+  "name": "@kmorey/herdr-file-upload",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check action.mjs && node --check receiver.mjs && node --check local.mjs && node --check src/herdr.mjs && node --check src/server.mjs && node --check src/handoff.mjs && node --check src/local-paths.mjs && node --check src/local-connection.mjs && node --check src/automatic-upload.mjs && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

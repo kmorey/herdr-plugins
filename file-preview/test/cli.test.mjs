@@ -144,7 +144,7 @@ test("search finds literal matches beyond the viewport and isolates query input 
   assert.equal((await tty.exit()).exit, 0);
 });
 
-test("native image graphics are cleared before text and restored when returning to the image", { skip: process.platform === "win32" }, async (t) => {
+const nativeGraphicsScenario = (rejectReopen) => async (t) => {
   const { directory, image } = fixtures(t);
   const file = path.join(directory, "notes.txt");
   writeFileSync(file, "Text after native image");
@@ -152,6 +152,7 @@ test("native image graphics are cleared before text and restored when returning 
   const events = [];
   const sockets = new Set();
   let activeStream = false;
+  let streamAttempts = 0;
   const server = net.createServer((socket) => {
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
@@ -176,6 +177,11 @@ test("native image graphics are cleared before text and restored when returning 
         events.push(request.method);
         assert.equal(request.params.pane_id, "test:p1");
         if (request.method === "pane.graphics.stream") {
+          streamAttempts++;
+          if (rejectReopen && streamAttempts === 2) {
+            socket.write(`${JSON.stringify({ id: request.id, error: { message: "Graphics turned off" } })}\n`);
+            continue;
+          }
           activeStream = true;
           socket.once("end", () => { activeStream = false; });
         }
@@ -201,11 +207,14 @@ test("native image graphics are cleared before text and restored when returning 
   assert.ok(events.indexOf("png") < events.indexOf("pane.graphics.clear"));
   tty.clear();
   tty.send("h");
-  await tty.waitFor("Native graphics");
+  await tty.waitFor(rejectReopen ? "ANSI fallback (Graphics turned off)" : "Native graphics");
   tty.send("q");
   assert.equal((await tty.exit()).exit, 0);
-  assert.deepEqual(events.filter((event) => event === "png" || event === "pane.graphics.clear"), ["png", "pane.graphics.clear", "png", "pane.graphics.clear"]);
-});
+  assert.deepEqual(events.filter((event) => event === "png" || event === "pane.graphics.clear"), rejectReopen ? ["png", "pane.graphics.clear"] : ["png", "pane.graphics.clear", "png", "pane.graphics.clear"]);
+};
+
+test("native image graphics are cleared before text and restored when returning to the image", { skip: process.platform === "win32" }, nativeGraphicsScenario(false));
+test("a rejected reopened stream uses the image fallback", { skip: process.platform === "win32" }, nativeGraphicsScenario(true));
 
 test("inspection honors compatibility inputs and rejects selected invalid inputs and unsupported files", (t) => {
   const { directory, image } = fixtures(t);

@@ -170,7 +170,7 @@ export async function runViewer(paths) {
         if (key.name === "escape") editing = false;
         else if (key.name === "return" || key.name === "enter") {
           editing = false;
-          query = draft;
+          query = draft.normalize("NFC");
           matches = [];
           matchIndex = 0;
           if (query) {
@@ -242,7 +242,8 @@ export async function runViewer(paths) {
       process.once("SIGTERM", terminate);
       process.once("SIGINT", terminate);
     }
-    await draw();
+    queue = queue.then(draw);
+    await queue;
     if (interactive) await done;
   } finally {
     await close();

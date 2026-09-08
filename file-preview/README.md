@@ -79,7 +79,8 @@ resize. The text viewport remains within the current document.
 | `y` | Copy the current absolute path through OSC 52 |
 | `o` | Request opening with the platform's application on the viewer host |
 
-Search uses the active displayed representation and highlights the current
+Search uses the active displayed representation (with Unicode NFC normalization)
+and highlights the current
 match, including matches crossing soft wraps. Submitting an empty query clears
 search. Switching files or toggling Markdown source clears search. Canceling a
 draft keeps the previous search. Characters typed into a search are not viewer
@@ -145,6 +146,6 @@ inputs exit nonzero with a diagnostic on stderr.
 
 The tests use Node's built-in runner, real file fixtures, a mock Herdr socket,
 and the actual CLI in a PTY. Interactive tests require Python 3 on macOS/Linux;
-they are skipped on Windows. Python is a test-only requirement. This JavaScript
+PTY and Unix-socket tests are skipped on Windows. Python is a test-only requirement. This JavaScript
 package has no TypeScript/typechecking setup; syntax can be checked with
 `node --check`.

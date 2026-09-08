@@ -12,6 +12,8 @@ export function textRows(text, width) {
 }
 
 export function layoutText(text, width) {
+  // wrap-ansi normalizes glyphs; searchable text must use the same offsets.
+  text = text.normalize("NFC");
   let start = 0;
   const rows = text.split("\n").flatMap((line) => {
     const wrapped = textRows(line, width).map((ansi) => {

@@ -2,12 +2,13 @@
 
 import process from "node:process";
 
-import { proofPaths } from "./src/gallery.mjs";
+import { filePaths } from "./src/gallery.mjs";
 import { inspectArtifact, loadArtifact } from "./src/artifact.mjs";
 import { runViewer } from "./src/viewer.mjs";
+import { safeText } from "./src/text.mjs";
 
 try {
-  const paths = proofPaths({
+  const paths = filePaths({
     pathsJson: process.env.FILE_PREVIEW_PATHS ?? (process.env.FILE_PREVIEW_PATH === undefined ? process.env.VISUAL_PROOF_PATHS : undefined),
     singlePath: process.env.FILE_PREVIEW_PATH ?? process.env.VISUAL_PROOF_PATH,
     arguments: process.argv.slice(2),
@@ -19,6 +20,6 @@ try {
     await runViewer(paths);
   }
 } catch (error) {
-  process.stderr.write(`File preview unavailable: ${error.message}\n`);
+  process.stderr.write(`File preview unavailable: ${safeText(error.message)}\n`);
   process.exitCode = 1;
 }

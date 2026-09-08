@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { deflateSync } from "node:zlib";
 
-import { moveIndex, proofPaths } from "../src/gallery.mjs";
+import { moveIndex, filePaths } from "../src/gallery.mjs";
 import { decodePng } from "../src/png.mjs";
 import { imagePlacement, openPaneGraphics } from "../src/herdr-graphics.mjs";
-import { loadProof } from "../src/proof.mjs";
+import { loadArtifact } from "../src/artifact.mjs";
 import { renderPreview, targetSize, truncateMiddle } from "../src/render.mjs";
 
 test("decodes a small RGBA PNG", () => {
@@ -51,7 +51,7 @@ test("fits native graphics to the pane using terminal cell dimensions", () => {
   );
 });
 
-test("streams the original PNG through the Herdr pane graphics protocol", async () => {
+test("streams the original PNG through the Herdr pane graphics protocol", { skip: process.platform === "win32" }, async () => {
   const directory = mkdtempSync(path.join(tmpdir(), "herdr-graphics-test-"));
   const socketPath = path.join(directory, "herdr.sock");
   const png = Buffer.from("png bytes");
@@ -120,16 +120,16 @@ test("truncates long paths through the middle", () => {
 
 test("accepts a JSON gallery while preserving single-path compatibility", () => {
   assert.deepEqual(
-    proofPaths({ pathsJson: '["/tmp/one.png","/tmp/two.png"]' }),
-    ["/tmp/one.png", "/tmp/two.png"],
+    filePaths({ pathsJson: JSON.stringify([path.resolve("one.png"), path.resolve("two.png")]) }),
+    [path.resolve("one.png"), path.resolve("two.png")],
   );
-  assert.deepEqual(proofPaths({ singlePath: "/tmp/one.png" }), ["/tmp/one.png"]);
+  assert.deepEqual(filePaths({ singlePath: path.resolve("one.png") }), [path.resolve("one.png")]);
 });
 
 test("rejects malformed or empty galleries", () => {
-  assert.throws(() => proofPaths({ pathsJson: "not-json" }), /JSON array/);
-  assert.throws(() => proofPaths({ pathsJson: "[]" }), /no visual proof paths/);
-  assert.throws(() => proofPaths({ pathsJson: '["/tmp/one.png",null]' }), /non-empty string/);
+  assert.throws(() => filePaths({ pathsJson: "not-json" }), /JSON array/);
+  assert.throws(() => filePaths({ pathsJson: "[]" }), /no file paths/);
+  assert.throws(() => filePaths({ pathsJson: '["/tmp/one.png",null]' }), /non-empty string/);
 });
 
 test("gallery navigation wraps in both directions", () => {
@@ -138,13 +138,13 @@ test("gallery navigation wraps in both directions", () => {
   assert.equal(moveIndex(0, 3, -1), 2);
 });
 
-test("validates a real proof path", () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "herdr-proof-test-"));
+test("validates a real PNG artifact", () => {
+  const directory = realpathSync(mkdtempSync(path.join(tmpdir(), "herdr-proof-test-")));
   const proofPath = path.join(directory, "proof.png");
   writeFileSync(proofPath, makePng(2, 1, Buffer.from([
     255, 128, 0, 255, 20, 30, 40, 255,
   ])));
-  const proof = loadProof(proofPath);
+  const proof = loadArtifact(proofPath);
   assert.equal(proof.path, proofPath);
   assert.equal(proof.image.width, 2);
   assert.equal(proof.image.height, 1);

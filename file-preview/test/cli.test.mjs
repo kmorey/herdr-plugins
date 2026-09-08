@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -12,7 +12,7 @@ const viewer = fileURLToPath(new URL("../viewer.mjs", import.meta.url));
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=", "base64");
 
 function fixtures(t) {
-  const directory = mkdtempSync(path.join(tmpdir(), "file-preview-test-"));
+  const directory = realpathSync(mkdtempSync(path.join(tmpdir(), "file-preview-test-")));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const image = path.join(directory, "proof.png");
   writeFileSync(image, png);
@@ -223,6 +223,7 @@ test("inspection honors compatibility inputs and rejects selected invalid inputs
     const result = run({ FILE_PREVIEW_PATH: file });
     assert.equal(result.status, 1, name);
     assert.match(result.stderr, expected);
+    assert.ok(result.stderr.includes(JSON.stringify(file)), result.stderr);
   }
   assert.match(run({ FILE_PREVIEW_PATH: directory }).stderr, /directory browsing/);
   assert.match(run({ FILE_PREVIEW_PATH: path.join(directory, "missing") }).stderr, /ENOENT/);
@@ -360,4 +361,64 @@ test("Markdown task lists show one checkbox on the same line as each item", (t) 
   const result = run({ FILE_PREVIEW_PATH: file }, []);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /• \[x\] Read the report\n• \[ \] Review differences/);
+});
+
+test("closing while native graphics initializes restores the terminal and releases the stream", { skip: process.platform === "win32" }, async (t) => {
+  const { directory, image } = fixtures(t);
+  const socketPath = path.join(directory, "delayed.sock");
+  const sockets = new Set();
+  const timers = new Set();
+  const server = net.createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+    socket.once("data", (data) => {
+      const request = JSON.parse(data.toString());
+      if (request.method === "pane.graphics.info") {
+        const timer = setTimeout(() => socket.write(`${JSON.stringify({ id: request.id, result: { cell_width_px: 9, cell_height_px: 18 } })}\n`), 200);
+        timers.add(timer);
+      } else socket.write(`${JSON.stringify({ id: request.id, result: { type: "ok" } })}\n`);
+    });
+  });
+  await new Promise((resolve) => server.listen(socketPath, resolve));
+  t.after(async () => {
+    for (const timer of timers) clearTimeout(timer);
+    for (const socket of sockets) socket.destroy();
+    await new Promise((resolve) => server.close(resolve));
+  });
+  const tty = terminal(t, viewer, cleanEnv({ FILE_PREVIEW_PATH: image, HERDR_SOCKET_PATH: socketPath, HERDR_PANE_ID: "test:p1" }));
+  await tty.waitFor("\x1b[?25l");
+  tty.send("q");
+  assert.deepEqual(await tty.exit(), { exit: 0, canonical: true, echo: true });
+  assert.doesNotMatch(tty.output.split("\x1b[?25h").at(-1), /Native graphics|File preview/);
+});
+
+test("search highlights the complete match after decomposed Unicode is displayed", { skip: process.platform === "win32" }, async (t) => {
+  const { directory } = fixtures(t);
+  const file = path.join(directory, "unicode.txt");
+  writeFileSync(file, "a\u0301needle\n");
+  const tty = terminal(t, viewer, cleanEnv({ FILE_PREVIEW_PATH: file }));
+  await tty.waitFor("needle");
+  tty.clear();
+  tty.send("/needle\r");
+  await tty.waitFor("Match 1/1");
+  assert.match(tty.output, /\x1b\[7mneedle\x1b\[0m/);
+  tty.clear();
+  tty.send("/a\u0301\r");
+  await tty.waitFor("Match 1/1");
+  assert.match(tty.output, /\x1b\[7má\x1b\[0m/);
+  tty.send("q");
+  assert.equal((await tty.exit()).exit, 0);
+});
+
+test("all gallery paths are validated before previewing and errors describe mixed files", (t) => {
+  const { directory } = fixtures(t);
+  const file = path.join(directory, "valid.txt");
+  writeFileSync(file, "Should not render an invalid gallery");
+  const result = run({ FILE_PREVIEW_PATHS: JSON.stringify([file, "relative.txt"]) }, []);
+  assert.equal(result.status, 1);
+  assert.doesNotMatch(result.stdout, /Should not render/);
+  assert.match(result.stderr, /absolute file paths/);
+  const invalid = run({ FILE_PREVIEW_PATHS: "not-json" });
+  assert.match(invalid.stderr, /JSON array of absolute file paths/);
+  assert.doesNotMatch(invalid.stderr, /VISUAL_PROOF|PNG/);
 });

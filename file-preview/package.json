@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test test/cli.test.mjs test/viewer.test.mjs"
   },
   "engines": {
     "node": ">=20"

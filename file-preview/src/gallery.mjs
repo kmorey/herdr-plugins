@@ -1,15 +1,17 @@
-const MAX_PROOFS = 24;
+import path from "node:path";
 
-export function proofPaths({ pathsJson, singlePath, arguments: arguments_ = [] }) {
+const MAX_FILES = 24;
+
+export function filePaths({ pathsJson, singlePath, arguments: arguments_ = [] }) {
   let values;
   if (pathsJson !== undefined) {
     try {
       values = JSON.parse(pathsJson);
     } catch {
-      throw new Error("VISUAL_PROOF_PATHS must be a JSON array of absolute PNG paths");
+      throw new Error("expected a JSON array of absolute file paths");
     }
     if (!Array.isArray(values)) {
-      throw new Error("VISUAL_PROOF_PATHS must be a JSON array of absolute PNG paths");
+      throw new Error("expected a JSON array of absolute file paths");
     }
   } else if (singlePath !== undefined) {
     values = [singlePath];
@@ -17,13 +19,14 @@ export function proofPaths({ pathsJson, singlePath, arguments: arguments_ = [] }
     values = arguments_.filter((value) => value !== "--inspect");
   }
 
-  if (values.length === 0) throw new Error("no visual proof paths were provided");
-  if (values.length > MAX_PROOFS) {
-    throw new Error(`the viewer supports at most ${MAX_PROOFS} proof files`);
+  if (values.length === 0) throw new Error("no file paths were provided");
+  if (values.length > MAX_FILES) {
+    throw new Error(`the viewer supports at most ${MAX_FILES} files`);
   }
   if (values.some((value) => typeof value !== "string" || value.length === 0)) {
-    throw new Error("every visual proof path must be a non-empty string");
+    throw new Error("every file path must be a non-empty string");
   }
+  if (values.some((value) => !path.isAbsolute(value))) throw new Error("the gallery requires absolute file paths");
   return [...new Set(values)];
 }
 

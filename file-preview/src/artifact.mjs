@@ -9,6 +9,14 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_TEXT_BYTES = 1024 * 1024;
 
 export function loadArtifact(value) {
+  try {
+    return readArtifact(value);
+  } catch (error) {
+    throw new Error(`${JSON.stringify(value)}: ${error.message}`);
+  }
+}
+
+function readArtifact(value) {
   if (!path.isAbsolute(value)) throw new Error("the file path must be absolute");
   const resolved = realpathSync(value);
   const fd = openSync(resolved, constants.O_RDONLY | constants.O_NONBLOCK);

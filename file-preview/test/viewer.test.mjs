@@ -191,6 +191,21 @@ test("finds galleries under common visual proof heading variants", () => {
   }
 });
 
+test("keeps recordings and screenshots together under an updated visual proof heading", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "herdr-current-proof-test-"));
+  const video = path.join(directory, "recording.mp4");
+  const png = path.join(directory, "final.png");
+  writeFileSync(video, "video");
+  writeFileSync(png, "image");
+  try {
+    for (const heading of ["Updated visual proof", "### Updated visual proof", "**Updated visual proof**", "Fresh visual proof", "Current visual proof", "Updated proof"]) {
+      assert.deepEqual(currentProofPaths(`${heading}\nRecording (${video})\nScreenshot (${png})`), [video, png], heading);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("finds every PNG in a bulleted fresh proof summary", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "herdr-current-proof-test-"));
   const proofPaths = [

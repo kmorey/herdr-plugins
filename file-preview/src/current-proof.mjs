@@ -60,7 +60,7 @@ function isProofHeading(line) {
     .trim()
     .replace(/^([*_]{1,3})(.*?)\1$/, "$2")
     .trim();
-  return /^(?:(?:Visual|Fresh|Current)\s+)?Proofs?\b/i.test(heading);
+  return /^(?:(?:Updated|Fresh|Current)\s+)?(?:Visual\s+)?Proofs?\b/i.test(heading);
 }
 
 function expandFileLinks(value) {

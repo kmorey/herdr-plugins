@@ -142,7 +142,8 @@ native image layer; returning to PNG renders it again.
 
 The existing user-invoked `open-current` action is retained for reopening the
 latest PNG/MP4 proof gallery from the focused pane's last 500 rows. It recognizes
-Visual Proof, Fresh Proof, and Current Proof headings, and otherwise selects the
+Visual Proof, Fresh Proof, Current Proof, and Updated Visual Proof headings
+(including Fresh/Current Visual Proof variants), and otherwise selects the
 most recent existing PNG or MP4 path. Stale or missing paths produce a notification.
 Explicit file-path inputs remain the reliable handoff for all supported formats.
 

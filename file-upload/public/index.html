@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>File Upload · Herdr</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header><span class="wordmark">herdr <span>/</span> file upload</span><span class="badge">PANE TRANSFER</span></header>
+      <section class="intro">
+        <p class="eyebrow">FROM YOUR COMPUTER TO YOUR AGENT</p>
+        <h1>Bring your files<br>into the conversation.</h1>
+        <p class="lede">Drop a screenshot, document, or source file. We’ll save it on your agent’s machine and put its path within reach.</p>
+      </section>
+      <section class="destination" aria-label="Upload destination">
+        <span class="indicator" aria-hidden="true"></span>
+        <div><span class="label">DESTINATION</span><strong id="target">Connecting…</strong></div>
+        <span id="expiry"></span>
+      </section>
+      <section id="drop-zone" aria-label="File drop zone">
+        <div class="upload-icon" aria-hidden="true">↑</div>
+        <h2>Drop files here</h2>
+        <p>or <label class="browse" for="files">choose files from your computer</label></p>
+        <input id="files" type="file" multiple disabled>
+        <p class="limits" id="limits">Connecting to the upload receiver…</p>
+      </section>
+      <p id="status" role="status" aria-live="polite">Opening your upload window…</p>
+      <section id="uploads" hidden aria-label="Uploaded files">
+        <div class="section-heading"><h2>Your files</h2><span id="count"></span></div>
+        <ul id="file-list"></ul>
+        <div class="actions"><p>Paths are inserted into your draft.<br>You choose when to send the message.</p><button id="insert" disabled>Insert paths <span aria-hidden="true">↗</span></button></div>
+      </section>
+      <footer><span>Local files. Remote-ready.</span><span>Saved files remain available after this window closes.</span></footer>
+    </main>
+  </body>
+</html>

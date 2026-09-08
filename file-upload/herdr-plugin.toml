@@ -1,0 +1,18 @@
+id = "kmorey.file-upload"
+name = "File Upload"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Upload local files through a browser and insert their paths into a Herdr pane"
+platforms = ["linux", "macos"]
+
+[[actions]]
+id = "attach"
+title = "Attach files to this pane"
+contexts = ["pane"]
+command = ["node", "action.mjs"]
+
+[[panes]]
+id = "receiver"
+title = "File upload"
+placement = "split"
+command = ["node", "receiver.mjs"]

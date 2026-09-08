@@ -1,0 +1,53 @@
+:root { color-scheme: light; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #25362f; background: #f5f4ef; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { width: min(760px, 100% - 48px); margin: 0 auto; padding: 34px 0 28px; }
+header, .section-heading, .actions, footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.wordmark { font-size: 17px; font-weight: 650; letter-spacing: -.5px; }
+.wordmark span { color: #858c83; margin: 0 7px; font-weight: 400; }
+.badge { color: #5c6a61; font-size: 10px; letter-spacing: 1.7px; border: 1px solid #d5d9cf; border-radius: 5px; padding: 6px 8px; }
+.intro { padding: 52px 0 25px; }
+.eyebrow, .label { font-size: 10px; letter-spacing: 1.6px; font-weight: 650; color: #67766a; }
+h1 { margin: 15px 0 18px; font-size: clamp(32px, 5.5vw, 46px); line-height: 1.12; font-weight: 550; letter-spacing: -1.8px; }
+.lede { max-width: 570px; font-size: 15px; line-height: 1.7; color: #617067; }
+.destination { background: #e9ede4; border: 1px solid #d9dfd3; border-radius: 9px; padding: 15px 18px; display: flex; align-items: center; gap: 13px; margin: 0 0 18px; }
+.indicator { width: 8px; height: 8px; flex-shrink: 0; background: #587c50; border-radius: 50%; }
+.destination .label { display: block; font-size: 9px; margin-bottom: 4px; }
+.destination strong { display: block; font-size: 13px; font-weight: 550; overflow-wrap: anywhere; }
+#expiry { margin-left: auto; color: #667660; font-size: 11px; flex-shrink: 0; }
+#drop-zone { border: 1.5px dashed #a7b79d; background: #fafbf7; border-radius: 10px; text-align: center; padding: 27px 16px 23px; transition: background .15s, border-color .15s; }
+#drop-zone.dragging { background: #e1ebd9; border-color: #446a35; }
+.upload-icon { display: grid; place-items: center; margin: auto; width: 38px; height: 38px; background: #e9efdf; border-radius: 11px; color: #526b40; font-size: 26px; }
+h2 { font-size: 16px; font-weight: 600; margin: 15px 0 8px; }
+#drop-zone p { color: #687467; font-size: 13px; margin: 8px 0; }
+.browse { color: #365927; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+#files { display: block; margin: 14px auto 0; max-width: 100%; font-size: 12px; color: #617067; }
+#files::file-selector-button { cursor: pointer; border: 1px solid #ccd6c2; border-radius: 5px; padding: 6px 10px; background: #f2f6ec; color: #365927; margin-right: 8px; }
+#drop-zone .limits { margin-top: 16px; font-size: 11px; color: #778071; }
+#status { font-size: 13px; line-height: 1.6; margin: 14px 0 25px; color: #586d4d; overflow-wrap: anywhere; }
+#status.error { color: #a13e28; }
+.section-heading h2 { font-size: 14px; margin: 0; }
+#count { font-size: 11px; color: #737e70; }
+ul { padding: 0; margin: 12px 0 0; list-style: none; }
+li { border-top: 1px solid #dce0d5; padding: 14px 0; display: grid; grid-template-columns: 1fr auto; gap: 5px 15px; }
+.file-name { font-size: 13px; font-weight: 550; overflow-wrap: anywhere; }
+.file-state { font-size: 11px; color: #66745e; }
+.file-path { grid-column: 1 / -1; font-size: 11px; color: #73806a; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; margin: 0; }
+.actions { border-top: 1px solid #dce0d5; padding: 16px 0; }
+.actions p { font-size: 11px; line-height: 1.6; color: #74806e; margin: 0; }
+button { border: 0; border-radius: 7px; padding: 12px 17px; background: #36582a; color: #fff; font: inherit; font-size: 13px; cursor: pointer; flex-shrink: 0; }
+button span { margin-left: 17px; }
+button:hover:not(:disabled) { background: #28441e; }
+button:disabled { opacity: .45; cursor: default; }
+:focus-visible { outline: 2px solid #597c45; outline-offset: 4px; }
+footer { border-top: 1px solid #dce0d5; margin-top: 25px; padding-top: 18px; color: #818877; font-size: 10px; line-height: 1.6; }
+@media (max-width: 520px) {
+  main { width: calc(100% - 32px); padding-top: 23px; }
+  .intro { padding-top: 36px; }
+  .badge { display: none; }
+  .destination { flex-wrap: wrap; }
+  #expiry { margin-left: 21px; }
+  footer { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .actions { gap: 12px; }
+  button { padding: 12px; }
+}

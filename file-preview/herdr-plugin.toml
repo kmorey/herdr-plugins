@@ -1,0 +1,15 @@
+id = "kmorey.file-preview"
+name = "File Preview"
+version = "0.4.0"
+min_herdr_version = "0.8.2"
+description = "Preview agent-generated files in a Herdr pane"
+platforms = ["linux", "macos", "windows"]
+
+[[build]]
+command = ["npm", "ci", "--omit=dev", "--ignore-scripts"]
+
+[[panes]]
+id = "viewer"
+title = "File preview"
+placement = "split"
+command = ["node", "viewer.mjs"]

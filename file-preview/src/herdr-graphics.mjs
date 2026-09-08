@@ -52,6 +52,9 @@ export async function openPaneGraphics({ socketPath, paneId }) {
     close() {
       stream.end();
     },
+    clear() {
+      return request(socketPath, "pane.graphics.clear", { pane_id: paneId, layer_id: "primary" });
+    },
   };
 }
 
@@ -60,7 +63,7 @@ function request(socketPath, method, params) {
     const socket = net.createConnection(socketPath);
     readResponse(socket, method, resolve, reject);
     socket.once("connect", () => {
-      socket.write(`${JSON.stringify({ id: `visual-proof:${method}`, method, params })}\n`);
+      socket.write(`${JSON.stringify({ id: `file-preview:${method}`, method, params })}\n`);
     });
   });
 }
@@ -71,7 +74,7 @@ function openStream(socketPath, paneId) {
     readResponse(socket, "pane.graphics.stream", () => resolve(socket), reject, false);
     socket.once("connect", () => {
       socket.write(`${JSON.stringify({
-        id: "visual-proof:stream",
+        id: "file-preview:stream",
         method: "pane.graphics.stream",
         params: { pane_id: paneId, layer_id: "primary", z_index: 0 },
       })}\n`);
@@ -87,12 +90,13 @@ function readResponse(socket, method, resolve, reject, destroy = true) {
     if (settled) return;
     settled = true;
     clearTimeout(timeout);
-    if (destroy) socket.destroy();
+    if (destroy || callback === reject) socket.destroy();
     callback(value);
   };
 
   socket.setEncoding("utf8");
   socket.once("error", (error) => settle(reject, error));
+  socket.once("close", () => settle(reject, new Error(`Herdr connection closed: ${method}`)));
   socket.on("data", (chunk) => {
     if (settled) return;
     buffer += chunk;

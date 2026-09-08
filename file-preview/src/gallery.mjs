@@ -2,7 +2,7 @@ const MAX_PROOFS = 24;
 
 export function proofPaths({ pathsJson, singlePath, arguments: arguments_ = [] }) {
   let values;
-  if (pathsJson) {
+  if (pathsJson !== undefined) {
     try {
       values = JSON.parse(pathsJson);
     } catch {
@@ -11,7 +11,7 @@ export function proofPaths({ pathsJson, singlePath, arguments: arguments_ = [] }
     if (!Array.isArray(values)) {
       throw new Error("VISUAL_PROOF_PATHS must be a JSON array of absolute PNG paths");
     }
-  } else if (singlePath) {
+  } else if (singlePath !== undefined) {
     values = [singlePath];
   } else {
     values = arguments_.filter((value) => value !== "--inspect");

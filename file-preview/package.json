@@ -1,0 +1,16 @@
+{
+  "name": "@kmorey/herdr-file-preview",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "marked": "^18.0.12",
+    "wrap-ansi": "^10.0.1"
+  }
+}

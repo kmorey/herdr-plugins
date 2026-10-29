@@ -17,7 +17,8 @@ def emit(value):
 
 
 master, slave = pty.openpty()
-fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 100, 0, 0))
+rows, columns = (int(sys.argv[3]), int(sys.argv[4])) if len(sys.argv) >= 5 else (24, 100)
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
 child = subprocess.Popen(sys.argv[1:], stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
 pending = b""
 try:
@@ -35,6 +36,10 @@ try:
                 command = json.loads(line)
                 if "keys" in command:
                     os.write(master, command["keys"].encode())
+                if "resize_silently" in command:
+                    rows, columns = command["resize_silently"]
+                    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
+                    emit({"ack": "resize_silently"})
                 if "resize" in command:
                     rows, columns = command["resize"]
                     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))

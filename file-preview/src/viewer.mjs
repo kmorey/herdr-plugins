@@ -5,11 +5,12 @@ import { emitKeypressEvents } from "node:readline";
 
 import { loadArtifact } from "./artifact.mjs";
 import { moveIndex } from "./gallery.mjs";
-import { imagePlacement, openPaneGraphics } from "./herdr-graphics.mjs";
-import { renderPreview, truncateMiddle } from "./render.mjs";
+import { fittedImageFrame, imagePlacement, openPaneGraphics } from "./herdr-graphics.mjs";
+import { truncateMiddle } from "./render.mjs";
 import { documentText, layoutText, safeText, textRows } from "./text.mjs";
-import { decodePng } from "./png.mjs";
+import { decodePng, encodePng } from "./png.mjs";
 import { VideoDecoder, videoTime } from "./video.mjs";
+import { TerminalInput } from "./terminal-input.mjs";
 
 const HELP = [
   "Keyboard help", "",
@@ -58,13 +59,24 @@ export async function runViewer(paths) {
   let graphicsAttempted = false;
   let imageShown = false;
   let graphicsError = "";
+  let graphicsAbort;
+  let fittedStill;
+  let closing = false;
   let closed = false;
   let help = false;
   let helpOffset = 0;
   let queue = Promise.resolve();
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const terminalInput = new TerminalInput();
   const originalRaw = process.stdin.isRaw ?? false;
-  const size = () => ({ columns: Math.max(2, process.stdout.columns || 80), rows: Math.max(4, process.stdout.rows || 24) });
+  const size = () => {
+    // A pane can be resized before Node starts watching SIGWINCH, leaving the cached properties stale.
+    process.stdout._refreshSize?.();
+    return {
+      columns: Math.max(2, process.stdout.columns || 80),
+      rows: Math.max(4, process.stdout.rows || 24),
+    };
+  };
   const viewport = () => Math.max(1, size().rows - 5);
 
   const videoBounds = () => ({
@@ -72,15 +84,30 @@ export async function runViewer(paths) {
     height: viewport() * (graphics?.cell.height || 2),
   });
 
+  async function initializeGraphics() {
+    if (graphicsAttempted || !interactive || help) return;
+    graphicsAttempted = true;
+    const controller = new AbortController();
+    graphicsAbort = controller;
+    try {
+      graphics = await openPaneGraphics({
+        input: terminalInput,
+        output: process.stdout,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (closing && error.code === "ABORT_ERR") return;
+      graphicsError = error.message;
+    } finally {
+      if (graphicsAbort === controller) graphicsAbort = undefined;
+    }
+  }
+
   async function draw(frameOnly = false) {
     if (closed) return;
-    if ((artifact.image || artifact.video) && !graphicsAttempted && interactive) {
-      graphicsAttempted = true;
-      try {
-        graphics = await openPaneGraphics({ socketPath: process.env.HERDR_SOCKET_PATH, paneId: process.env.HERDR_PANE_ID });
-      } catch (error) {
-        graphicsError = error.message;
-      }
+    if (artifact.video) {
+      await initializeGraphics();
+      if (closing) return;
     }
     if (artifact.video && !decoder) {
       decoder = new VideoDecoder(artifact.path, artifact.video);
@@ -112,8 +139,10 @@ export async function runViewer(paths) {
     const heading = `\x1b[1;36m${clip(`File preview  ${index + 1}/${paths.length}  ${name}`)}\x1b[0m`;
     const footer = artifact.video ? (width < 60 ? "Space play · ←→ seek · [/] file · ? help" : "Space play/pause · ←/→ seek 5s · ,/. step · [/] file · ? help · q close") : width < 60 ? "? help · q close" : ["? help", paths.length > 1 ? "←/h prev · →/l next" : "", !artifact.image ? "↑↓ scroll · / search · n/N match" : "", artifact.type === "markdown" ? "s source" : "", "q/Esc close · o open · y copy"].filter(Boolean).join(" · ");
     let body;
-    if (artifact.image) {
-      body = graphics ? "" : renderPreview(artifact.image, columns, height);
+    if ((artifact.image || artifact.video) && !graphics) {
+      body = textRows(safeText(`Preview unavailable: ${graphicsError || "native graphics requires an interactive Herdr pane"}\n\nOpen the original file with o on the viewer host; y copies its path.`), width).slice(0, viewport()).join("\n");
+    } else if (artifact.image) {
+      body = "";
     } else if (artifact.video) {
       body = "Video frame unavailable";
     } else {
@@ -136,13 +165,42 @@ export async function runViewer(paths) {
         return `${row.text.slice(0, from)}\x1b[7m${row.text.slice(from, to)}\x1b[0m${row.text.slice(to)}`;
       }).join("\n");
     }
-    const progress = artifact.video ? `${decoder.playing ? "Playing" : "Paused"} · ${videoTime(decoder.position)} / ${videoTime(artifact.video.duration)} · ${"━".repeat(Math.round(20 * decoder.position / artifact.video.duration))}●${"─".repeat(20 - Math.round(20 * decoder.position / artifact.video.duration))}${graphics ? " · silent" : " · Playback requires native graphics"}` : !artifact.image ? `Lines ${offsets[index] + 1}–${Math.min(rows.length, offsets[index] + viewport())}/${rows.length}` : (graphics ? "Native graphics" : `ANSI fallback${graphicsError ? ` (${graphicsError})` : ""}`);
+    const progress = artifact.video ? `${decoder.playing ? "Playing" : "Paused"} · ${videoTime(decoder.position)} / ${videoTime(artifact.video.duration)} · ${"━".repeat(Math.round(20 * decoder.position / artifact.video.duration))}●${"─".repeat(20 - Math.round(20 * decoder.position / artifact.video.duration))}${graphics ? " · silent" : " · Playback requires native graphics"}` : !artifact.image ? `Lines ${offsets[index] + 1}–${Math.min(rows.length, offsets[index] + viewport())}/${rows.length}` : (graphics ? "Native graphics" : "Preview unavailable · Native graphics required");
     const searchStatus = editing ? `/${draft}  (Enter search · Esc cancel)` : query ? `${matches.length ? `Match ${matchIndex + 1}/${matches.length}` : "No matches"} · /${query}` : "";
     const chrome = `\x1b[${height - 1};1H\x1b[2K\x1b[2m${clip(decoder?.error || status || searchStatus || progress)}\x1b[0m\x1b[${height};1H\x1b[2K${clip(footer)}`;
     process.stdout.write(frameOnly && graphics ? chrome : `\x1b[2J\x1b[H\x1b]2;File preview: ${name}\x07${heading}\n\x1b[2m${clip(metadata)}\x1b[0m\n\n${body}${chrome}`);
+    if (artifact.image && !graphicsAttempted && interactive) {
+      await initializeGraphics();
+      if (closing) return;
+      return draw(frameOnly);
+    }
     if (artifact.image && graphics) {
       try {
-        await graphics.renderPng(artifact.data, artifact.image, imagePlacement(artifact.image, size(), graphics.cell));
+        if (artifact.video) {
+          await graphics.renderPng(artifact.data, artifact.image, imagePlacement(artifact.image, size(), graphics.cell));
+        } else {
+          const terminal = size();
+          if (
+            !fittedStill ||
+            fittedStill.artifact !== artifact ||
+            fittedStill.columns !== terminal.columns ||
+            fittedStill.rows !== terminal.rows ||
+            fittedStill.cellWidth !== graphics.cell.width ||
+            fittedStill.cellHeight !== graphics.cell.height
+          ) {
+            const frame = fittedImageFrame(artifact.image, terminal, graphics.cell);
+            fittedStill = {
+              artifact,
+              columns: terminal.columns,
+              rows: terminal.rows,
+              cellWidth: graphics.cell.width,
+              cellHeight: graphics.cell.height,
+              frame,
+              data: encodePng(frame),
+            };
+          }
+          await graphics.renderPng(fittedStill.data, fittedStill.frame, fittedStill.frame.placement);
+        }
         imageShown = true;
       } catch (error) {
         graphics.close();
@@ -159,6 +217,8 @@ export async function runViewer(paths) {
   const done = new Promise((resolve) => { finish = resolve; });
   async function close() {
     if (closed) return;
+    closing = true;
+    graphicsAbort?.abort();
     closed = true;
     clearInterval(playbackTimer);
     await decoder?.stop();
@@ -170,7 +230,9 @@ export async function runViewer(paths) {
     } finally {
       graphics?.close();
       process.stdout.off("resize", resize);
-      process.stdin.off("keypress", keypress);
+      terminalInput.off("keypress", keypress);
+      process.stdin.unpipe(terminalInput);
+      terminalInput.destroy();
       process.off("SIGTERM", terminate);
       process.off("SIGINT", terminate);
       if (interactive) {
@@ -184,16 +246,43 @@ export async function runViewer(paths) {
 
   function schedule(action) {
     queue = queue.then(action).catch(async (error) => {
+      if (closing && error.code === "ABORT_ERR") return close();
       process.stderr.write(`File preview unavailable: ${safeText(error.message)}\n`);
       process.exitCode = 1;
       await close();
     });
   }
   const resize = () => schedule(async () => {
-    if (decoder && !help) await decoder.start(decoder.position, decoder.playing, videoBounds());
+    const position = decoder?.position;
+    const playing = decoder?.playing;
+    await decoder?.stop();
+    graphicsAttempted = false;
+
+    if (graphics) {
+      try {
+        if (imageShown) await graphics.clear();
+      } catch (error) {
+        graphicsError = error.message;
+      } finally {
+        graphics.close();
+        graphics = undefined;
+        imageShown = false;
+      }
+    }
+    if (decoder && !help) {
+      // videoBounds needs the new cell metrics, not the 2×2 fallback used when
+      // graphics are unavailable. Keep playback frozen during negotiation.
+      await initializeGraphics();
+      if (closing) return;
+      await decoder.start(position, playing, videoBounds());
+    }
     await draw();
   });
-  const terminate = () => schedule(close);
+  const terminate = () => {
+    closing = true;
+    graphicsAbort?.abort();
+    schedule(close);
+  };
 
   function resetDocument() {
     document = artifact.image || artifact.video ? "" : documentText(artifact, sourceViews[index]);
@@ -210,7 +299,13 @@ export async function runViewer(paths) {
     if (row >= 0) offsets[index] = row;
   }
 
-  async function keypress(char, key = {}) {
+  function keypress(char, key = {}) {
+    if ((graphicsAbort && char === "q") || (key.ctrl && key.name === "c")) {
+      closing = true;
+      graphicsAbort?.abort();
+      schedule(close);
+      return;
+    }
     schedule(async () => {
       if (closed) return;
       if (editing) {
@@ -238,7 +333,11 @@ export async function runViewer(paths) {
       if (help) {
         if (char === "?" || key.name === "escape") {
           help = false;
-          if (decoder) await decoder.start(decoder.position, false, videoBounds());
+          if (decoder) {
+            await initializeGraphics();
+            if (closing) return;
+            await decoder.start(decoder.position, false, videoBounds());
+          }
         }
         else helpOffset = scrollPosition(helpOffset, char, key, viewport(), textRows(HELP, size().columns - 1).length);
         await draw();
@@ -268,6 +367,7 @@ export async function runViewer(paths) {
         }
         const offset = key.name === "left" || char === "h" || char === "[" ? -1 : 1;
         index = moveIndex(index, paths.length, offset);
+        fittedStill = undefined;
         artifact = loadArtifact(paths[index]);
         resetDocument();
       }
@@ -311,9 +411,10 @@ export async function runViewer(paths) {
           finally { framePending = false; }
         });
       }, 1000 / 15);
-      emitKeypressEvents(process.stdin);
+      emitKeypressEvents(terminalInput);
+      terminalInput.on("keypress", keypress);
       process.stdin.setRawMode(true);
-      process.stdin.on("keypress", keypress);
+      process.stdin.pipe(terminalInput);
       process.stdin.resume();
       process.stdout.on("resize", resize);
       process.once("SIGTERM", terminate);

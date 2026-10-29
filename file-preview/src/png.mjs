@@ -1,8 +1,16 @@
-import { inflateSync } from "node:zlib";
+import { deflateSync, inflateSync } from "node:zlib";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const MAX_DIMENSION = 8_192;
 const MAX_PIXELS = 20_000_000;
+const CRC_TABLE = new Uint32Array(256);
+for (let index = 0; index < CRC_TABLE.length; index += 1) {
+  let crc = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  CRC_TABLE[index] = crc;
+}
 
 export function decodePng(source) {
   if (!Buffer.isBuffer(source) || source.length < PNG_SIGNATURE.length) {
@@ -67,6 +75,48 @@ export function decodePng(source) {
     height: header.height,
     rgba: toRgba(scanlines, header, palette, transparency),
   };
+}
+
+export function encodePng(image) {
+  const scanlines = Buffer.allocUnsafe((image.width * 4 + 1) * image.height);
+  for (let row = 0; row < image.height; row += 1) {
+    const target = row * (image.width * 4 + 1);
+    scanlines[target] = 0;
+    image.rgba.copy(scanlines, target + 1, row * image.width * 4, (row + 1) * image.width * 4);
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(image.width, 0);
+  header.writeUInt32BE(image.height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    PNG_SIGNATURE,
+    pngChunk("IHDR", header),
+    pngChunk("IDAT", deflateSync(scanlines)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+function pngChunk(type, data) {
+  const typeBytes = Buffer.from(type);
+  const output = Buffer.allocUnsafe(data.length + 12);
+  output.writeUInt32BE(data.length, 0);
+  typeBytes.copy(output, 4);
+  data.copy(output, 8);
+  output.writeUInt32BE(crc32(typeBytes, data), data.length + 8);
+  return output;
+}
+
+function crc32(type, data) {
+  return (updateCrc(updateCrc(0xffffffff, type), data) ^ 0xffffffff) >>> 0;
+}
+
+function updateCrc(initial, data) {
+  let crc = initial;
+  for (const byte of data) {
+    crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ byte) & 0xff];
+  }
+  return crc;
 }
 
 function validateHeader(header, imageData, reachedEnd, palette) {

@@ -6,10 +6,9 @@ import path from "node:path";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import net from "node:net";
 
 import { loadArtifact, inspectArtifact } from "../src/artifact.mjs";
-import { currentProofPaths } from "../src/current-proof.mjs";
+import { currentFilePaths } from "../src/current-file.mjs";
 import { decodePng } from "../src/png.mjs";
 import { pngFrames, VideoDecoder } from "../src/video.mjs";
 import { terminal } from "./support/terminal.mjs";
@@ -17,17 +16,17 @@ import { terminal } from "./support/terminal.mjs";
 const available = ["ffmpeg", "ffprobe"].every((command) => spawnSync(command, ["-version"]).status === 0);
 const viewer = fileURLToPath(new URL("../viewer.mjs", import.meta.url));
 
-function fixture(t, filters = []) {
+function fixture(t, filters = [], source = "testsrc2=size=160x90:rate=10:duration=2") {
   const directory = realpathSync(mkdtempSync(path.join(tmpdir(), "video-preview-")));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const file = path.join(directory, "sample video.MP4");
-  const result = spawnSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=10:duration=2", ...filters, "-c:v", "mpeg4", "-threads", "1", file]);
+  const result = spawnSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", source, ...filters, "-c:v", "mpeg4", "-threads", "1", file]);
   assert.equal(result.status, 0, result.stderr.toString());
   return { directory, file };
 }
 
 function cleanEnv(extra = {}) {
-  return { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(HERDR_|FILE_PREVIEW_|VISUAL_PROOF_)/.test(key))), ...extra };
+  return { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(HERDR_|FILE_PREVIEW_)/.test(key))), ...extra };
 }
 
 test("MP4 inspection validates media, dimensions and duration; shortcut discovers mixed media", { skip: !available }, (t) => {
@@ -40,8 +39,8 @@ test("MP4 inspection validates media, dimensions and duration; shortcut discover
   assert.equal(artifact.height, 90);
   const png = path.join(directory, "proof.png");
   writeFileSync(png, "png");
-  assert.deepEqual(currentProofPaths(`Fresh proof\n${png}\n[Recording](${pathToFileURL(file).href})`), [png, file]);
-  assert.deepEqual(currentProofPaths(`Recording: <${file}>`), [file]);
+  assert.deepEqual(currentFilePaths(`Current files\n${png}\n[Recording](${pathToFileURL(file).href})`), [png, file]);
+  assert.deepEqual(currentFilePaths(`Recording: <${file}>`), [file]);
   writeFileSync(file, "not an mp4");
   assert.throws(() => loadArtifact(file), /Could not inspect MP4/);
 });
@@ -114,12 +113,14 @@ test("missing media tools give actionable diagnostics", { skip: !available }, (t
   assert.match(result.stderr, /requires ffmpeg and ffprobe on the viewer host/);
 });
 
-test("video fallback shows a still, supports seeking and gallery position, and restores terminal", { skip: !available || process.platform === "win32" }, async (t) => {
+test("video without graphics reports an unavailable preview, retains position, and restores terminal", { skip: !available || process.platform === "win32" }, async (t) => {
   const { file, directory } = fixture(t);
   const text = path.join(directory, "notes.txt");
   writeFileSync(text, "Recording notes");
   const tty = terminal(t, viewer, cleanEnv({ FILE_PREVIEW_PATHS: JSON.stringify([file, text]) }));
   await tty.waitFor("Playback requires native graphics");
+  assert.match(tty.screen, /Preview unavailable/);
+  assert.doesNotMatch(tty.screen, /▀|ANSI fallback/);
   assert.match(tty.screen, /Paused.*00:00 \/ 00:02/);
   tty.clear();
   tty.send(" ");
@@ -127,6 +128,7 @@ test("video fallback shows a still, supports seeking and gallery position, and r
   tty.clear();
   tty.send("\x1b[C");
   await tty.waitFor("00:02 / 00:02");
+  assert.doesNotMatch(tty.screen, /▀|ANSI fallback/);
   assert.match(tty.screen, /1\/2/);
   tty.clear();
   tty.send("]");
@@ -141,7 +143,69 @@ test("video fallback shows a still, supports seeking and gallery position, and r
   assert.deepEqual(await tty.exit(), { exit: 0, canonical: true, echo: true });
 });
 
-test("native video playback streams changing frames and pauses for help and gallery navigation", { skip: !available || process.platform === "win32" }, async (t) => {
+for (const playing of [false, true]) {
+  test(`native video resize renegotiates decode dimensions and preserves ${playing ? "playing" : "paused"} position`, { skip: !available || process.platform === "win32" }, async (t) => {
+    const { file } = fixture(t, [], "testsrc2=size=640x360:rate=10:duration=12");
+    const tty = terminal(t, viewer, cleanEnv({ FILE_PREVIEW_PATHS: JSON.stringify([file]) }), undefined, { kitty: {} });
+    const { frames } = tty.graphics;
+    const dimensions = (frame) => {
+      const { width, height } = decodePng(frame.data);
+      return { width, height };
+    };
+    await tty.waitForGraphics(() => frames.length > 0);
+    await tty.waitFor("Paused");
+    assert.deepEqual(dimensions(frames.at(-1)), { width: 608, height: 342 });
+    tty.clear();
+    tty.send("\x1b[C");
+    await tty.waitFor("00:05 / 00:12");
+    if (playing) {
+      tty.clear();
+      tty.send(" ");
+      await tty.waitFor("Playing");
+    }
+    const beforeResize = frames.length;
+    const beforeCells = tty.graphics.cellQueries;
+    tty.clear();
+    tty.resize(18, 65);
+    await tty.waitFor(playing ? "Playing" : "Paused");
+    // A playing restart can initially display its cached old-size frame. Wait
+    // for a newly decoded size, then assert actual PNG pixels, not placement.
+    const newlySized = () => frames.slice(beforeResize).find((frame) => dimensions(frame).height !== 342);
+    await tty.waitForGraphics(() => newlySized());
+    assert.deepEqual(dimensions(newlySized()), { width: 416, height: 234 }, "fit 16:9 video into 63×13 cells of 9×18 pixels");
+    assert.ok(tty.graphics.cellQueries > beforeCells, "resize reacquires cell dimensions");
+    assert.match(tty.screen, playing ? /Playing.*00:05 \/ 00:12/ : /Paused.*00:05 \/ 00:12/, "resize does not reset position or playback state");
+    if (!playing) {
+      await delay(150);
+      const pausedFrames = frames.length;
+      await delay(150);
+      assert.equal(frames.length, pausedFrames, "resize must not start paused playback");
+      const beforeHelp = frames.length;
+      tty.clear();
+      tty.send("?");
+      await tty.waitFor("Keyboard help");
+      tty.clear();
+      tty.resize(20, 70);
+      await tty.waitFor("Keyboard help");
+      assert.equal(frames.length, beforeHelp, "help resize must not display an invisible video");
+      tty.clear();
+      tty.send("?");
+      await tty.waitFor("Paused");
+      await tty.waitForGraphics(() => frames.length > beforeHelp);
+      // 15 body rows × 18 pixels = 270; 16:9 fits at 480×270.
+      assert.deepEqual(dimensions(frames.at(-1)), { width: 480, height: 270 }, "help restoration negotiates before restarting the decoder");
+      assert.match(tty.screen, /Paused.*00:05 \/ 00:12/);
+    } else {
+      const restartedFrames = frames.length;
+      await tty.waitForGraphics(() => frames.length > restartedFrames + 1);
+      assert.deepEqual(dimensions(frames.at(-1)), { width: 416, height: 234 }, "resized playback continues with full-resolution frames");
+    }
+    tty.send("q");
+    assert.deepEqual(await tty.exit(), { exit: 0, canonical: true, echo: true });
+  });
+}
+
+test("native video transmits changing Kitty frames, pauses, seeks, and cleans up for help and gallery navigation", { skip: !available || process.platform === "win32" }, async (t) => {
   const { file, directory } = fixture(t);
   const text = path.join(directory, "notes.txt");
   writeFileSync(text, "After video");
@@ -154,79 +218,108 @@ test("native video playback streams changing frames and pauses for help and gall
   const assertStopped = () => {
     for (const pid of pids()) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `decoder ${pid} should have exited`);
   };
-  const socketPath = path.join(directory, "graphics.sock");
-  const frames = [];
-  const sockets = new Set();
-  let clears = 0;
-  const server = net.createServer((socket) => {
-    sockets.add(socket);
-    socket.on("close", () => sockets.delete(socket));
-    let buffer = Buffer.alloc(0);
-    let frame;
-    socket.on("data", (chunk) => {
-      buffer = Buffer.concat([buffer, chunk]);
-      while (buffer.length) {
-        if (frame) {
-          if (buffer.length < frame.data_length) return;
-          frames.push(Buffer.from(buffer.subarray(0, frame.data_length)));
-          assert.ok(decodePng(frames.at(-1)).width <= 1280);
-          buffer = buffer.subarray(frame.data_length);
-          frame = undefined;
-          continue;
-        }
-        const newline = buffer.indexOf(10);
-        if (newline < 0) return;
-        const request = JSON.parse(buffer.subarray(0, newline));
-        buffer = buffer.subarray(newline + 1);
-        if (request.format) { frame = request; continue; }
-        if (request.method === "pane.graphics.clear") clears++;
-        socket.write(`${JSON.stringify({ id: request.id, result: request.method === "pane.graphics.info" ? { cell_width_px: 9, cell_height_px: 18 } : {} })}\n`);
-      }
-    });
-  });
-  await new Promise((resolve) => server.listen(socketPath, resolve));
-  t.after(async () => {
-    for (const socket of sockets) socket.destroy();
-    await new Promise((resolve) => server.close(resolve));
-  });
-  const tty = terminal(t, viewer, cleanEnv({ PATH: `${directory}${path.delimiter}${process.env.PATH}`, FILE_PREVIEW_PATHS: JSON.stringify([file, text]), HERDR_SOCKET_PATH: socketPath, HERDR_PANE_ID: "test:p1" }));
+  const tty = terminal(t, viewer, cleanEnv({ PATH: `${directory}${path.delimiter}${process.env.PATH}`, FILE_PREVIEW_PATHS: JSON.stringify([file, text]) }), undefined, { kitty: {} });
+  const { frames, deletions } = tty.graphics;
+  await tty.waitForGraphics(() => frames.length > 0);
   await tty.waitFor("Paused");
+  assert.ok(tty.graphics.queries.length > 0);
+  const initial = frames[0];
+  // Captured CSI coordinates are 1-based; the final occupied cell is inclusive.
+  assert.ok(initial.placement.column >= 2 && initial.placement.column + initial.command.c - 1 <= 99);
+  assert.ok(initial.placement.row >= 4 && initial.placement.row + initial.command.r - 1 <= 22);
+  const assertOwnedDelete = () => {
+    assert.ok(deletions.length > 0, "delete the displayed video image");
+    const owned = new Set(frames.map((frame) => frame.command.i));
+    for (const command of deletions) {
+      assert.equal(command.d, "I");
+      assert.equal(command.q, 2);
+      assert.ok(owned.has(command.i), "only the viewer's own images may be deleted");
+    }
+    assert.equal(deletions.at(-1).i, frames.at(-1).command.i);
+  };
   tty.clear();
   tty.send(" ");
   await tty.waitFor("Playing");
   await tty.waitFor("00:01 / 00:02");
-  assert.ok(new Set(frames.map((frame) => frame.toString("base64"))).size > 2);
+  assert.ok(new Set(frames.map((frame) => frame.data.toString("base64"))).size > 2);
+  assert.ok(frames.some((frame) => frame.chunks.length > 1), "video PNGs exercise chunked transfer");
+  tty.clear();
+  tty.send(" ");
+  await tty.waitFor("Paused");
+  await delay(150);
+  const pausedFrames = frames.length;
+  await delay(150);
+  assert.equal(frames.length, pausedFrames, "paused video must not keep transmitting frames");
+  assertStopped();
+  tty.clear();
+  tty.send("\x1b[C");
+  await tty.waitFor("00:02 / 00:02");
+  assert.match(tty.screen, /Paused/);
+  tty.clear();
+  tty.send("\x1b[D");
+  await tty.waitFor("00:00 / 00:02");
+  const beforeHelp = deletions.length;
   tty.clear();
   tty.send("?");
   await tty.waitFor("Keyboard help");
   assertStopped();
-  const beforeResize = pids().length;
+  assert.ok(deletions.length > beforeHelp);
+  assertOwnedDelete();
+  const beforeHelpResize = pids().length;
   tty.clear();
   tty.resize(25, 90);
   await tty.waitFor("Keyboard help");
-  assert.equal(pids().length, beforeResize, "help resize must not start an invisible decoder");
+  assert.equal(pids().length, beforeHelpResize, "help resize must not start an invisible decoder");
+  const beforeRestore = frames.length;
   tty.clear();
   tty.send("?");
   await tty.waitFor("Paused");
-  assert.ok(clears >= 1);
+  await tty.waitForGraphics(() => frames.length > beforeRestore);
+  const beforeStep = frames.length;
+  const stepOrigin = frames.at(-1).data;
   tty.clear();
   tty.send(".");
   await tty.waitFor("Paused");
+  await tty.waitForGraphics(() => frames.length > beforeStep);
+  assert.notDeepEqual(frames.at(-1).data, stepOrigin, "single-frame step advances the decoded image");
+  const beforeResize = frames.length;
   tty.clear();
   tty.resize(18, 65);
   await tty.waitFor("MP4");
+  await tty.waitForGraphics(() => frames.length > beforeResize);
+  const resized = frames.at(-1);
+  const rendered = decodePng(resized.data);
+  assert.ok(rendered.width <= 63 * 9 && rendered.height <= 13 * 18);
+  assert.ok(resized.placement.column >= 2 && resized.placement.column + resized.command.c - 1 <= 64);
+  assert.ok(resized.placement.row >= 4 && resized.placement.row + resized.command.r - 1 <= 16);
+  const pausedPosition = /00:\d{2} \/ 00:02/.exec(tty.screen)[0];
+  const beforeGallery = deletions.length;
   tty.clear();
   tty.send("]");
   await tty.waitFor("After video");
   assertStopped();
+  assert.ok(deletions.length > beforeGallery);
+  assertOwnedDelete();
+  const beforeReturn = frames.length;
   tty.clear();
   tty.send("[");
   await tty.waitFor("Paused");
+  await tty.waitForGraphics(() => frames.length > beforeReturn);
+  assert.ok(decodePng(frames.at(-1).data).width > 0, "gallery return re-transmits a valid PNG");
+  assert.ok(tty.screen.includes(pausedPosition), "gallery return preserves the paused playback position");
   tty.clear();
   tty.send(" ");
   await tty.waitFor("Playing");
   tty.send("q");
   assert.deepEqual(await tty.exit(), { exit: 0, canonical: true, echo: true });
   assertStopped();
-  assert.ok(clears >= 2);
+  assertOwnedDelete();
+  for (const frame of frames) {
+    const image = decodePng(frame.data);
+    assert.ok(image.width > 0 && image.width <= 1280 && image.height > 0);
+    assert.ok(frame.placement.column >= 2 && frame.placement.column + frame.command.c - 1 <= 99);
+    assert.ok(frame.placement.row >= 4 && frame.placement.row + frame.command.r - 1 <= 23);
+    assert.equal(frame.command.p, 1);
+    assert.equal(frame.command.C, 1);
+  }
 });

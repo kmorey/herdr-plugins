@@ -9,8 +9,8 @@ import { safeText } from "./src/text.mjs";
 
 try {
   const paths = filePaths({
-    pathsJson: process.env.FILE_PREVIEW_PATHS ?? (process.env.FILE_PREVIEW_PATH === undefined ? process.env.VISUAL_PROOF_PATHS : undefined),
-    singlePath: process.env.FILE_PREVIEW_PATH ?? process.env.VISUAL_PROOF_PATH,
+    pathsJson: process.env.FILE_PREVIEW_PATHS,
+    singlePath: process.env.FILE_PREVIEW_PATH,
     arguments: process.argv.slice(2),
   });
   if (process.argv.includes("--inspect")) {

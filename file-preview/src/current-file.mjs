@@ -1,7 +1,7 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export function currentProofPaths(ansi) {
+export function currentFilePaths(ansi) {
   const text = expandFileLinks(ansi)
     .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
@@ -14,6 +14,10 @@ export function currentProofPaths(ansi) {
       "gi",
     ),
     new RegExp(String.raw`<(${absolutePath}[^>\r\n]*?\.(?:png|mp4))>`, "gi"),
+    new RegExp(
+      String.raw`\(\s*(${absolutePath}[^)\r\n]*?\.(?:png|mp4))\s*\)`,
+      "gi",
+    ),
     new RegExp(
       String.raw`${absolutePath}(?:[^\s()[\]{}'\x22\x60<>]|\\ )+?\.(?:png|mp4)`,
       "gi",
@@ -29,38 +33,15 @@ export function currentProofPaths(ansi) {
   }
 
   candidates.sort((left, right) => left.index - right.index);
-  const headings = [...text.matchAll(/^.*$/gm)].filter((match) =>
-    isProofHeading(match[0]),
-  );
-  let selected = [];
-
-  for (let index = headings.length - 1; index >= 0; index -= 1) {
-    const afterHeading = candidates.filter(
-      (candidate) => candidate.index > headings[index].index,
-    );
-    if (afterHeading.length > 0) {
-      selected = afterHeading;
-      break;
-    }
+  const latest = [];
+  const seen = new Set();
+  for (let index = candidates.length - 1; index >= 0 && latest.length < 3; index -= 1) {
+    const candidate = candidates[index];
+    if (seen.has(candidate.path)) continue;
+    seen.add(candidate.path);
+    latest.push(candidate.path);
   }
-
-  if (selected.length === 0 && candidates.length > 0) {
-    selected = [candidates.at(-1)];
-  }
-
-  return [...new Set(selected.map(({ path }) => path))].slice(0, 24);
-}
-
-function isProofHeading(line) {
-  const heading = line
-    .trim()
-    .replace(/^(?:[-+*•]\s+|>\s*)/, "")
-    .trim()
-    .replace(/^#{1,6}\s*/, "")
-    .trim()
-    .replace(/^([*_]{1,3})(.*?)\1$/, "$2")
-    .trim();
-  return /^(?:(?:Updated|Fresh|Current)\s+)?(?:Visual\s+)?Proofs?\b/i.test(heading);
+  return latest.reverse();
 }
 
 function expandFileLinks(value) {

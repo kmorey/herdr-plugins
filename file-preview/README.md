@@ -9,11 +9,10 @@ Files are read on the host running the plugin, including when Herdr is remote.
 Node.js 20+ and npm are required. Herdr installs the locked Markdown and
 Unicode-wrapping dependencies through the plugin's build step.
 
-```sh
-herdr plugin install kmorey/herdr-plugins/file-preview --ref v0.5.0 --yes
-```
-
-For a local checkout, from the repository root:
+This checkout requires Herdr 0.9.2 or newer. The published v0.5.0 release
+uses the removed pane graphics API and is not compatible with current Herdr.
+Until a compatible release is published, use a local checkout, from the
+repository root:
 
 ```sh
 npm --prefix file-preview ci
@@ -49,7 +48,8 @@ Unreadable files produce an error identifying the failed path.
 - **MP4:** `.mp4`, case-insensitively, with a video stream supported by the host's
   FFmpeg build. Requires `ffmpeg` and `ffprobe` in `PATH` on the viewer host.
   Opens paused; playback is silent and requires native pane graphics. Without
-  native graphics, a still frame uses the terminal fallback and seeking works.
+  native graphics, the viewer reports that the preview is unavailable; `o` opens
+  the original recording on the viewer host.
   Video is decoded incrementally, rather than loaded into memory, with previews
   capped at 15 fps and 1280×720. Source dimensions have the same 8,192-per-side
   and 20-million-pixel limits as PNGs; the PNG/text file-size limits do not apply.
@@ -110,7 +110,7 @@ to remote clients.
 Open an MP4 using the same command above with
 `--env 'FILE_PREVIEW_PATH=/absolute/path/to/demo.mp4'`, or include it in
 `FILE_PREVIEW_PATHS` alongside PNG and text files. For local development, link
-this checkout to use MP4 support; the pinned v0.5.0 release predates it.
+this checkout to use MP4 support; the v0.5.0 release predates it.
 
 Search uses the active displayed representation (with Unicode NFC normalization)
 and highlights the current
@@ -125,58 +125,97 @@ exit means the host accepted the request, not that a client application exists.
 
 ## Native graphics
 
-On Herdr 0.8.2+, enable pane graphics in `~/.config/herdr/config.toml` on the
-server and, with `herdr --remote`, on the local client:
+On Herdr 0.9.2+, the viewer writes standard Kitty graphics to its terminal.
+It does not call the removed `pane.graphics.info`, `set`, `stream`, or `clear`
+APIs and needs no graphics socket connection. Kitty graphics are enabled by
+default. If disabled, enable them in `~/.config/herdr/config.toml` on the server
+and, with `herdr --remote`, on the local client:
 
 ```toml
-[experimental]
+[terminal]
 kitty_graphics = true
 ```
 
 The outer terminal must support the Kitty graphics protocol (Herdr's audited
-terminals are Ghostty, kitty, and WezTerm). If native graphics are unavailable,
-PNG previews use true-color Unicode half blocks. Switching to text clears the
-native image layer; returning to PNG renders it again.
+terminals are Ghostty, kitty, and WezTerm). PNG previews fit the complete image
+to the pane, then send PNG bytes in chunked Kitty protocol commands. If native
+graphics are unavailable or fail, the
+viewer displays the error and offers `o` to open the original on the viewer host
+or `y` to copy its path. Images and video frames never use pixelated terminal-block
+substitutes. Switching to text clears the
+viewer's owned image; returning to PNG renders it again. Help, resize, and exit
+also remove the viewer's graphics without deleting another application's images.
 
-## Migration from Visual Proof
+The viewer queries Kitty support and obtains cell dimensions through standard
+terminal replies (`CSI 16 t`). Each query or image acknowledgment waits at most
+2 seconds; missing or zero cell dimensions are retried within a 2-second
+readiness deadline. Some fresh Herdr 0.9.3–0.9.5 panes do not answer the cell-size query
+until resized. If the viewer reports unavailable cell dimensions, resize the pane
+once to retry negotiation. The viewer remains Node-only and does not guess cell
+dimensions or use an additional runtime to obtain them.
+Replies, including fragmented or late replies, are consumed separately from
+keyboard shortcuts and search input. If support or metrics remain unavailable,
+the viewer displays the error and offers the original-file actions rather than
+rendering a substitute.
 
-The existing user-invoked `open-current` action is retained for reopening the
-latest PNG/MP4 proof gallery from the focused pane's last 500 rows. It recognizes
-Visual Proof, Fresh Proof, Current Proof, and Updated Visual Proof headings
-(including Fresh/Current Visual Proof variants), and otherwise selects the
-most recent existing PNG or MP4 path. Stale or missing paths produce a notification.
-Explicit file-path inputs remain the reliable handoff for all supported formats.
+### A preview cannot find its conversation pane
+
+`pane_not_found` when opening a split happens before the viewer starts; it is
+separate from a graphics negotiation failure. Check the caller context first:
+
+```sh
+herdr pane current --current
+herdr pane get "$HERDR_PANE_ID"
+```
+
+A shared agent daemon can retain the environment of the pane in which it was
+started. In particular, a Codex app-server may execute tools with an old
+`HERDR_PANE_ID` even though the visible Codex client has the correct ID. Shell
+snapshots can preserve that stale value across conversations. Retrying the same
+command or disabling shell snapshots does not repair an already stale daemon
+environment.
+
+Use `herdr pane list` to locate the conversation, then verify its identity with
+`herdr pane get <id>` and `herdr pane process-info --pane <id>`. Pass that verified
+live ID as `--target-pane` for this conversation only. A working directory alone
+is insufficient when several panes share it. Do not fall back to the focused
+pane or set one global pane ID for a shared daemon: previews could open beside
+another conversation. If the conversation cannot be identified unambiguously,
+report the stale context and retain the ordinary file link.
+
+## Open the current file
+
+The `open-current` action opens an ordered gallery of up to the three most
+recent distinct existing PNG or MP4 paths from the originating agent pane's
+last 500 rows. Invoking it again while File Preview is focused follows the
+preview panes back to that agent pane instead of scraping the preview. It
+recognizes indented parenthesized paths beneath a label, ignores duplicates
+and unusable paths, and keeps the selected paths in their pane-output order.
+Explicit file-path inputs remain the reliable way to open an ordered gallery or
+any supported text format.
 
 ```sh
 herdr plugin action invoke kmorey.file-preview.open-current
 ```
 
-Update an existing shortcut in `~/.config/herdr/config.toml` to the new action:
+To bind the action:
 
 ```toml
 [[keys.command]]
 key = "prefix+v"
 type = "plugin_action"
 command = "kmorey.file-preview.open-current"
-description = "Open current visual proof"
+description = "Open current file"
 ```
-
-Relink/reinstall as `kmorey.file-preview` and update callers to use that plugin
-ID. The old `kmorey.visual-proof` ID is not an alias. Existing installations can
-remain while callers migrate; the visual-proof skill still collects and
-delivers screenshot evidence, using File Preview as its viewer.
 
 Input precedence, from highest to lowest:
 
 1. `FILE_PREVIEW_PATHS` — JSON array of absolute paths.
 2. `FILE_PREVIEW_PATH` — one absolute path.
-3. `VISUAL_PROOF_PATHS` — legacy JSON array.
-4. `VISUAL_PROOF_PATH` — legacy single path.
-5. Positional path arguments.
+3. Positional path arguments.
 
 A selected empty or malformed variable fails validation rather than falling
-through to a lower-priority input. Compatibility variables remain supported
-during migration.
+through to a lower-priority input.
 
 Agents should explicitly pass output paths and keep ordinary absolute Markdown
 links in their responses for other clients. The retained PNG/MP4 action is a
@@ -201,10 +240,15 @@ decoding frames. Malformed JSON adds a
 `{"files":[...]}`; this replaces the old `{"proofs":[...]}` shape. Invalid
 inputs exit nonzero with a diagnostic on stderr.
 
-The tests use Node's built-in runner, real file fixtures, a mock Herdr socket,
-and the actual CLI in a PTY. Interactive tests require Python 3 on macOS/Linux;
+The tests use Node's built-in runner, real file fixtures, a test-only Kitty
+terminal responder, and the actual CLI in a PTY. Graphics tests validate
+chunked PNG payloads, acknowledgment handling, fitting, and owned-image cleanup. Interactive tests require Python 3 on macOS/Linux;
 PTY and Unix-socket tests are skipped on Windows. Video tests generate real MP4
 fixtures and require FFmpeg/ffprobe; they are skipped when those tools are missing.
 Python is a test-only requirement. This JavaScript
 package has no TypeScript/typechecking setup; syntax can be checked with
 `node --check`.
+
+The suite launches subprocesses and PTYs. If a restricted agent sandbox reports
+`spawnSync ... EPERM`, run the tests through the normal approval mechanism with
+those operations permitted; that failure does not establish a viewer regression.

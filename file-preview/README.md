@@ -9,10 +9,13 @@ Files are read on the host running the plugin, including when Herdr is remote.
 Node.js 20+ and npm are required. Herdr installs the locked Markdown and
 Unicode-wrapping dependencies through the plugin's build step.
 
-This checkout requires Herdr 0.9.2 or newer. The published v0.5.0 release
-uses the removed pane graphics API and is not compatible with current Herdr.
-Until a compatible release is published, use a local checkout, from the
-repository root:
+File Preview v0.6.0 requires Herdr 0.9.2 or newer. Install the release with:
+
+```sh
+herdr plugin install kmorey/herdr-plugins/file-preview --ref v0.6.0 --yes
+```
+
+For local development, link a checkout from the repository root:
 
 ```sh
 npm --prefix file-preview ci
@@ -109,8 +112,8 @@ to remote clients.
 
 Open an MP4 using the same command above with
 `--env 'FILE_PREVIEW_PATH=/absolute/path/to/demo.mp4'`, or include it in
-`FILE_PREVIEW_PATHS` alongside PNG and text files. For local development, link
-this checkout to use MP4 support; the v0.5.0 release predates it.
+`FILE_PREVIEW_PATHS` alongside PNG and text files. MP4 support was added after
+v0.5.0.
 
 Search uses the active displayed representation (with Unicode NFC normalization)
 and highlights the current
@@ -174,6 +177,10 @@ started. In particular, a Codex app-server may execute tools with an old
 snapshots can preserve that stale value across conversations. Retrying the same
 command or disabling shell snapshots does not repair an already stale daemon
 environment.
+
+For Codex, starting a conversation with `codex --no-daemon` gives it a separate
+server that inherits its pane context. Existing conversations need to be reopened
+with that option. A shell alias only applies where the shell expands it.
 
 Use `herdr pane list` to locate the conversation, then verify its identity with
 `herdr pane get <id>` and `herdr pane process-info --pane <id>`. Pass that verified
